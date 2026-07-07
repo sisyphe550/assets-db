@@ -7,9 +7,11 @@
 ```
 frontend/
 ├── doc/
-│   ├── 01-design.md              # 技术选型、状态管理、路由设计、类型定义
+│   ├── 01-design.md              # 技术选型、UI 规范、状态管理、路由设计、类型定义
 │   ├── 02-directory.md           # 本文档：目录结构详细说明
-│   └── 03-pages.md               # 页面级详细设计
+│   ├── 03-pages.md               # 页面级详细设计
+│   ├── 04-backend-api.md         # 后端 API 参考（鉴权/端点/错误码/业务规则）
+│   └── 05-components.md          # 组件规格（Props/loading-empty-error/表单校验）
 │
 ├── public/
 │   └── favicon.ico
