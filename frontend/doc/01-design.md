@@ -17,7 +17,19 @@
 | HTTP | `fetch` (RTK Query 内置) | 不需要 axios，RTK Query 的 `createApi` 自带 |
 | 样式 | Ant Design 内置 + CSS Modules | 避免引入额外 CSS 方案 |
 
-### 技术选型决策记录
+### 决策记录（已定稿）
+
+以下决策经讨论确认，不再变更：
+
+| # | 决策项 | 选择 | 确认日期 |
+|---|---|---|---|
+| 1 | 框架 | React 18 + TypeScript | 2026-07-07 |
+| 2 | UI 库 | Ant Design 5 | 2026-07-07 |
+| 3 | 状态管理 | Redux Toolkit + RTK Query | 2026-07-07 |
+| 4 | 路由策略 | 三个角色分开路由 | 2026-07-07 |
+| 5 | 后端对接 | 直连（Vite proxy），MSW 按需补充 | 2026-07-07 |
+| 6 | 盘点表格 | Univer（直接上，不做简化版） | 2026-07-07 |
+| 7 | 代码位置 | `./frontend/` | 2026-07-07 |
 
 **为什么不用 Vue？**
 后端团队（你）用 Go，前端用 React + TypeScript 类型系统更严谨，Ant Design 的 React 版本比 Element Plus 组件更丰富。且 Univer 的 React 封装更成熟。
