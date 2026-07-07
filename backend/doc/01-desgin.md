@@ -735,3 +735,4 @@ goctl rpc protoc service/user/rpc/user.proto --go_out=service/user/rpc --go-grpc
 | `06-error-codes.md` | 按接口列出的完整错误码矩阵 |
 | `07-inventory-ops.md` | 盘点 scope/归档/比对逐步算法 |
 | `08-infra-config.md` | 基础设施文件清单、功能说明、关键设计决策与端口汇总 |
+| `09-testing.md` | 测试报告：覆盖率、curl 验证结果、bug 记录 |
