@@ -14,12 +14,13 @@ import (
 )
 
 type ReportHandler struct {
-	PG  *sql.DB
-	MySQL *sql.DB
+	PG       *sql.DB
+	ReportDB *sql.DB
+	MySQL    *sql.DB
 }
 
-func NewReportHandler(pg, mysql *sql.DB) *ReportHandler {
-	return &ReportHandler{PG: pg, MySQL: mysql}
+func NewReportHandler(pg, reportDB, mysql *sql.DB) *ReportHandler {
+	return &ReportHandler{PG: pg, ReportDB: reportDB, MySQL: mysql}
 }
 
 // GET /report/assets/by-dept
@@ -118,7 +119,7 @@ func (h *ReportHandler) Export(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&req)
 
 	var jobID int64
-	err := h.PG.QueryRowContext(r.Context(),
+	err := h.ReportDB.QueryRowContext(r.Context(),
 		`INSERT INTO rpt_export_job (creator_id, export_type, params) VALUES ($1,$2,'{}') RETURNING id`,
 		uid, req.ExportType).Scan(&jobID)
 	if err != nil {
@@ -133,7 +134,7 @@ func (h *ReportHandler) ExportStatus(w http.ResponseWriter, r *http.Request) {
 	jobID := parseLastPathSeg(r.URL.Path)
 	var status int16
 	var errMsg *string
-	h.PG.QueryRowContext(r.Context(),
+	h.ReportDB.QueryRowContext(r.Context(),
 		`SELECT status, error_message FROM rpt_export_job WHERE id=$1`, jobID).Scan(&status, &errMsg)
 	writeOK(w, map[string]any{"jobId": jobID, "status": status})
 }

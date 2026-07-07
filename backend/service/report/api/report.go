@@ -16,14 +16,17 @@ import (
 
 func main() {
 	pgDSN := getEnv("POSTGRES_DSN", "postgres://fams:fams_dev_pass@localhost:5432/fams_core?sslmode=disable")
+	reportDSN := getEnv("POSTGRES_REPORT_DSN", "postgres://fams:fams_dev_pass@localhost:5432/fams_report?sslmode=disable")
 	mysqlDSN := getEnv("MYSQL_DSN", "fams:fams_dev_pass@tcp(localhost:3306)/fams_asset?parseTime=true")
 
 	pg, _ := sql.Open("postgres", pgDSN)
+	reportDB, _ := sql.Open("postgres", reportDSN)
 	mysql, _ := sql.Open("mysql", mysqlDSN)
 	defer pg.Close()
+	defer reportDB.Close()
 	defer mysql.Close()
 
-	h := handler.NewReportHandler(pg, mysql)
+	h := handler.NewReportHandler(pg, reportDB, mysql)
 
 	mux := http.NewServeMux()
 	authMux := http.NewServeMux()
