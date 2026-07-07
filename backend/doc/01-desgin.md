@@ -736,4 +736,5 @@ goctl rpc protoc service/user/rpc/user.proto --go_out=service/user/rpc --go-grpc
 | `07-inventory-ops.md` | 盘点 scope/归档/比对逐步算法 |
 | `08-infra-config.md` | 基础设施文件清单、功能说明、关键设计决策与端口汇总 |
 | `09-testing.md` | 测试报告：覆盖率、curl 验证结果、bug 记录 |
-| `10-final-status.md` | 开发完成状态：已完成 90%、已知限制、bug 记录、测试速查 |
+| `10-final-status.md` | 开发完成状态：已完成 95%+、已知限制、bug 记录、测试速查 |
+| `11-frontend-handoff.md` | **前后端交接文档**：快速开始、API 速查、错误码、业务规则、前端建议 |
