@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
@@ -8,20 +9,48 @@ import (
 	"strings"
 
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"github.com/sisyphus550/assets-db/backend/pkg/middleware"
 	"github.com/sisyphus550/assets-db/backend/service/inventory/api/internal/handler"
 )
 
 func main() {
-	dsn := getEnv("POSTGRES_DSN", "postgres://fams:fams_dev_pass@localhost:5432/fams_core?sslmode=disable")
-	db, err := sql.Open("postgres", dsn)
+	pgDSN := getEnv("POSTGRES_DSN", "postgres://fams:fams_dev_pass@localhost:5432/fams_core?sslmode=disable")
+	mongoURI := getEnv("MONGO_URI", "mongodb://localhost:27017")
+	mongoDB := getEnv("MONGO_DB", "fams_inventory")
+	redisAddr := getEnv("REDIS_ADDR", "localhost:6379")
+	assetRPC := getEnv("ASSET_RPC_URL", "http://localhost:8082")
+
+	db, err := sql.Open("postgres", pgDSN)
 	if err != nil {
 		log.Fatalf("connect postgres: %v", err)
 	}
 	defer db.Close()
 
-	h := handler.NewInvHandler(db)
+	mongoClient, err := mongo.Connect(context.Background(), options.Client().ApplyURI(mongoURI))
+	if err != nil {
+		log.Printf("WARNING: MongoDB not available: %v", err)
+	} else {
+		log.Printf("MongoDB connected: %s", mongoURI)
+	}
+	if mongoClient != nil {
+		defer mongoClient.Disconnect(context.Background())
+	}
+
+	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
+	if err := rdb.Ping(context.Background()).Err(); err != nil {
+		log.Printf("WARNING: Redis not available: %v", err)
+		rdb = nil
+	} else {
+		log.Printf("Redis connected: %s", redisAddr)
+	}
+
+	draftCol := mongoClient.Database(mongoDB).Collection("inventory_draft")
+
+	h := handler.NewInvHandler(db, draftCol, rdb, assetRPC)
 
 	mux := http.NewServeMux()
 	authMux := http.NewServeMux()
@@ -33,10 +62,14 @@ func main() {
 		}
 	})
 	authMux.HandleFunc("/api/v1/inventory/tasks/", func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/archive") {
+		if strings.HasSuffix(r.URL.Path, "/submit") {
+			h.Submit(w, r)
+		} else if strings.HasSuffix(r.URL.Path, "/archive") {
 			h.Archive(w, r)
 		} else if strings.HasSuffix(r.URL.Path, "/records") {
 			h.Records(w, r)
+		} else if strings.Contains(r.URL.Path, "/expected-assets") {
+			h.ExpectedAssets(w, r)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}

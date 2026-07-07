@@ -10,7 +10,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/sisyphus550/assets-db/backend/pkg/errx"
-	"github.com/sisyphus550/assets-db/backend/service/asset/rpc/internal/logic"
+	"github.com/sisyphus550/assets-db/backend/service/asset/logic"
 )
 
 func main() {
@@ -62,6 +62,20 @@ func main() {
 		list, err := logic.ListByDeptIDs(r.Context(), db, req.DeptIDs)
 		if err != nil { rpcErr(w, err); return }
 		rpcOK(w, map[string]any{"assets": list})
+	})
+
+	mux.HandleFunc("/asset.rpc/CheckAssetScope", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			AssetNo     string `json:"assetNo"`
+			ScopeDeptID int64  `json:"scopeDeptId"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		inScope, err := logic.CheckAssetScope(r.Context(), db, req.AssetNo, req.ScopeDeptID)
+		if err != nil {
+			rpcOK(w, map[string]any{"inScope": false})
+			return
+		}
+		rpcOK(w, map[string]any{"inScope": inScope})
 	})
 
 	addr := ":" + getEnv("RPC_PORT", "8082")

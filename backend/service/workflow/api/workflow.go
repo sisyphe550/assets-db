@@ -21,7 +21,8 @@ func main() {
 	}
 	defer db.Close()
 
-	h := handler.NewWorkflowHandler(db)
+	assetRPC := getEnv("ASSET_RPC_URL", "http://localhost:8082")
+	h := handler.NewWorkflowHandler(db, assetRPC)
 
 	mux := http.NewServeMux()
 	authMux := http.NewServeMux()
