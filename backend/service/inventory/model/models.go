@@ -123,7 +123,7 @@ func (m *InvModel) ArchiveTask(ctx context.Context, taskID int64, records []Inve
 	}
 
 	_, err = tx.ExecContext(ctx,
-		`UPDATE inventory_task SET status=2, updated_at=NOW() WHERE id=$1`, taskID)
+		`UPDATE inventory_task SET status=2 WHERE id=$1`, taskID)
 	if err != nil { return err }
 
 	return tx.Commit()
