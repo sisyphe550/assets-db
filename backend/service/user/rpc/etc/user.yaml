@@ -1,0 +1,33 @@
+Name: user.rpc
+ListenOn: 0.0.0.0:8081
+
+Etcd:
+  Hosts:
+    - localhost:2379
+  Key: user.rpc
+
+Postgres:
+  DSN: postgres://fams:fams_dev_pass@localhost:5432/fams_core?sslmode=disable
+
+Redis:
+  Host: localhost:6379
+  Type: node
+
+JWT:
+  AccessSecret: dev_access_secret_change_me_in_prod
+  AccessExpire: 7200
+
+RefreshJWT:
+  RefreshSecret: dev_refresh_secret_change_me_in_prod
+  RefreshExpire: 86400
+
+Telemetry:
+  Name: user-rpc
+  Endpoint: localhost:4317
+  Sampler: 1.0
+  Batcher: otlpgrpc
+
+Prometheus:
+  Host: 0.0.0.0
+  Port: 9102
+  Path: /metrics

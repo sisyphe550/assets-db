@@ -1,0 +1,117 @@
+syntax = "v1"
+
+info (
+	title:   "FAMS User API"
+	desc:    "用户与权限微服务 HTTP 接口"
+	author:  "FAMS"
+	version: "v1"
+)
+
+type (
+	// Login
+	LoginReq {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	LoginResp {
+		AccessToken  string `json:"accessToken"`
+		RefreshToken string `json:"refreshToken"`
+		ExpiresIn    int64  `json:"expiresIn"`
+		TokenType    string `json:"tokenType"`
+	}
+
+	// Refresh
+	RefreshReq {
+		RefreshToken string `json:"refreshToken"`
+	}
+
+	// User Info
+	UserInfo {
+		Id             int64  `json:"id"`
+		Username       string `json:"username"`
+		RealName       string `json:"realName"`
+		RoleLevel      int16  `json:"roleLevel"`
+		DepartmentId   int64  `json:"departmentId"`
+		DepartmentName string `json:"departmentName"`
+		Status         int16  `json:"status"`
+	}
+
+	// Department
+	DeptNode {
+		Id       int64      `json:"id"`
+		ParentId int64      `json:"parentId"`
+		DeptName string     `json:"deptName"`
+		DeptCode string     `json:"deptCode"`
+		Path     string     `json:"path"`
+		Children []*DeptNode `json:"children"`
+	}
+	DeptTreeResp {
+		Nodes []*DeptNode `json:"nodes"`
+	}
+	CreateDeptReq {
+		ParentId  int64  `json:"parentId"`
+		DeptName  string `json:"deptName"`
+		DeptCode  string `json:"deptCode"`
+		SortOrder int    `json:"sortOrder,optional"`
+	}
+
+	// Create User
+	CreateUserReq {
+		Username     string `json:"username"`
+		Password     string `json:"password"`
+		RealName     string `json:"realName"`
+		RoleLevel    int16  `json:"roleLevel"`
+		DepartmentId int64  `json:"departmentId"`
+	}
+	CreateUserResp {
+		Id       int64  `json:"id"`
+		Username string `json:"username"`
+	}
+
+	// Update User Status
+	UpdateStatusReq {
+		Status int16 `json:"status"`
+	}
+
+	// Common
+	EmptyResp {}
+)
+
+@server (
+	prefix: /api/v1/user
+	group:  user
+)
+service user-api {
+	@handler Login
+	post /login (LoginReq) returns (LoginResp)
+
+	@handler Refresh
+	post /refresh (RefreshReq) returns (LoginResp)
+
+	@handler Logout
+	post /logout returns (EmptyResp)
+}
+
+@server (
+	prefix: /api/v1/user
+	group:  user
+)
+service user-api {
+	@handler Me
+	get /me returns (UserInfo)
+
+	@handler DeptTree
+	get /departments/tree returns (DeptTreeResp)
+
+	@handler CreateDept
+	post /departments (CreateDeptReq) returns (DeptNode)
+
+	@handler CreateUser
+	post /users (CreateUserReq) returns (CreateUserResp)
+
+	@handler UpdateUserStatus
+	put /users/:id/status (UpdateStatusReq) returns (EmptyResp)
+
+	@handler ForceLogout
+	post /users/:id/force-logout returns (EmptyResp)
+}
