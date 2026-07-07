@@ -24,7 +24,7 @@
 | `prometheus` | `prom/prometheus:v2.53.0` | 指标采集与时序存储 |
 | `grafana` | `grafana/grafana:11.0.0` | 可视化监控大盘 |
 | `postgres-exporter` | `prometheuscommunity/postgres-exporter:v0.15.0` | PG 指标暴露 |
-| `mysqld-exporter` | `prom/mysqld-exporter:v0.15.1` | MySQL 指标暴露 |
+| `mysqld-exporter` | `prom/mysqld-exporter:v0.14.0` | MySQL 指标暴露 |
 | `redis-exporter` | `oliver006/redis_exporter:v1.59.0` | Redis 指标暴露 |
 | `kafka-exporter` | `danielqsj/kafka-exporter:v1.7.0` | Kafka 指标暴露 |
 | `mongodb-exporter` | `percona/mongodb_exporter:0.40.0` | MongoDB 指标暴露 |
@@ -298,4 +298,78 @@ Metrics 端口（不在 compose 内，供 Prometheus 抓取）：
 
 ---
 
-*文档版本：v1.0 | 2026-07-07*
+## 5. 实际部署踩坑记录（2026-07-07 验证）
+
+本节记录 `docker compose up -d` 首次部署时遇到的问题与修复方案，供后续维护参考。
+
+### 5.1 etcd：环境变量与命令行 flag 冲突
+
+**现象**：`fams-etcd` 反复重启，日志报错：
+```
+conflicting environment variable is shadowed by corresponding command-line flag
+environment-variable: ETCD_DATA_DIR
+```
+
+**原因**：etcd v3.5.5 不允许同一配置项同时通过环境变量和命令行 flag 设置。`ETCD_DATA_DIR` 环境变量与 `--data-dir=/etcd-data` flag 冲突。
+
+**修复**：从 `environment` 中移除 `ETCD_DATA_DIR`，仅保留 `--data-dir` flag（保留 `ETCD_NAME` 和 `ETCD_AUTO_COMPACTION_RETENTION`，这两项无对应 flag 冲突）。
+
+### 5.2 MySQL Exporter：v0.15.1 不支持 DATA_SOURCE_NAME
+
+**现象**：`fams-mysqld-exporter` 反复重启，日志报错：
+```
+mysqld_exporter: error: unknown long flag '--mysqld.password'
+```
+
+**原因**：`prom/mysqld-exporter` v0.15.0 重构为 multi-target 模式，移除了 `DATA_SOURCE_NAME` 环境变量支持和 `--mysqld.password` flag。v0.15+ 的连接配置改为通过 `.my.cnf` 文件（`--config.my-cnf`）或 HTTP 请求参数传递 DSN。
+
+**修复**：降级到 `prom/mysqld-exporter:v0.14.0`，该版本仍支持 `DATA_SOURCE_NAME` 环境变量。
+
+> **后续计划**：若要升级到 v0.15+，需改为挂载 `.my.cnf` 配置文件或使用 multi-target HTTP 参数模式。
+
+### 5.3 Kafka 健康检查：二进制路径不在默认 PATH
+
+**现象**：`fams-kafka` 启动正常但 healthcheck 一直报告 unhealthy：
+```
+kafka-topics.sh: executable file not found in $PATH
+```
+
+**原因**：`apache/kafka:3.9.0` 镜像中 Kafka 脚本位于 `/opt/kafka/bin/`，不在容器默认 `PATH` 中。
+
+**修复**：健康检查命令改为绝对路径：
+```
+/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9094 --list
+```
+
+同时将 `retries` 从 5 增加到 10、`start_period` 从 20s 增加到 30s，给 KRaft 选举足够时间。
+
+### 5.4 docker-compose.yml：`version` 字段已废弃
+
+**现象**：Docker 28.4.0 输出 warning：
+```
+the attribute `version` is obsolete, it will be ignored
+```
+
+**修复**：移除 `version: "3.8"` 行。Docker Compose Specification 不再需要 `version` 字段。
+
+### 5.5 docker compose ps 不读取 env-file
+
+**现象**：执行 `docker compose ps` 未带 `--env-file` 时，输出大量环境变量未设置的 warning。
+
+**原因**：`docker compose ps`、`docker compose logs` 等管理命令不会自动使用 `docker compose up` 时的 `--env-file`，需要显式传递。
+
+**修复**：在 `scripts/healthcheck.sh` 等脚本中不加 `--env-file`（因为 `ps` 不依赖具体值），或统一使用 `docker compose --env-file ... ps`。
+
+### 5.6 验证环境
+
+| 组件 | 版本 |
+|---|---|
+| macOS | Darwin 24.6.0 (ARM64) |
+| Docker | 28.4.0 |
+| Docker Compose | v5 (integrated) |
+| Go | 1.25.4 |
+| goctl | 1.9.2 |
+
+---
+
+*文档版本：v1.1 | 2026-07-07（实际部署验证后更新）*

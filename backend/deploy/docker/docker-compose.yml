@@ -1,5 +1,3 @@
-version: "3.8"
-
 # ==============================
 # FAMS 基础设施 Docker Compose
 # ==============================
@@ -166,11 +164,11 @@ services:
     volumes:
       - ../../data/kafka/data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9094 --list"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9094 --list || exit 1"]
       interval: 15s
       timeout: 10s
-      retries: 5
-      start_period: 20s
+      retries: 10
+      start_period: 30s
     networks:
       - fams-net
 
@@ -185,7 +183,6 @@ services:
     environment:
       TZ: Asia/Shanghai
       ETCD_NAME: fams-etcd
-      ETCD_DATA_DIR: /etcd-data
       ETCD_AUTO_COMPACTION_RETENTION: "1"
     ports:
       - "${ETCD_PORT}:2379"
@@ -317,15 +314,16 @@ services:
   # 11. MySQL Exporter
   # ==============================
   mysqld-exporter:
-    image: prom/mysqld-exporter:v0.15.1
+    image: prom/mysqld-exporter:v0.14.0
     container_name: fams-mysqld-exporter
     restart: unless-stopped
     environment:
-      DATA_SOURCE_NAME: "${MYSQL_USER}:${MYSQL_PASSWORD}@(mysql:3306)/${MYSQL_DATABASE}"
+      DATA_SOURCE_NAME: "${MYSQL_USER}:${MYSQL_PASSWORD}@tcp(mysql:3306)/"
     ports:
       - "9104:9104"
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     networks:
       - fams-net
 
