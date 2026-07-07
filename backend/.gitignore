@@ -1,0 +1,26 @@
+# ---- Docker Compose Env (contains secrets) ----
+deploy/docker/docker-compose-env.yml
+
+# ---- Data directories ----
+data/
+
+# ---- Go build artifacts ----
+*.exe
+*.test
+*.out
+/bin/
+/vendor/
+
+# ---- IDE ----
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- Temp ----
+/tmp/
+*.log

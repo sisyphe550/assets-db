@@ -1,0 +1,67 @@
+# ==============================
+# FAMS Prometheus 抓取配置
+# ==============================
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # ---- 微服务 Metrics（go-zero 内置 /metrics） ----
+  - job_name: fams-user-api
+    static_configs:
+      - targets: ["host.docker.internal:9101"]
+        labels: { service: "user-api" }
+  - job_name: fams-user-rpc
+    static_configs:
+      - targets: ["host.docker.internal:9102"]
+        labels: { service: "user-rpc" }
+  - job_name: fams-asset-api
+    static_configs:
+      - targets: ["host.docker.internal:9103"]
+        labels: { service: "asset-api" }
+  - job_name: fams-asset-rpc
+    static_configs:
+      - targets: ["host.docker.internal:9104"]
+        labels: { service: "asset-rpc" }
+  - job_name: fams-workflow-api
+    static_configs:
+      - targets: ["host.docker.internal:9105"]
+        labels: { service: "workflow-api" }
+  - job_name: fams-workflow-rpc
+    static_configs:
+      - targets: ["host.docker.internal:9106"]
+        labels: { service: "workflow-rpc" }
+  - job_name: fams-inventory-api
+    static_configs:
+      - targets: ["host.docker.internal:9107"]
+        labels: { service: "inventory-api" }
+  - job_name: fams-inventory-rpc
+    static_configs:
+      - targets: ["host.docker.internal:9108"]
+        labels: { service: "inventory-rpc" }
+  - job_name: fams-report-api
+    static_configs:
+      - targets: ["host.docker.internal:9109"]
+        labels: { service: "report-api" }
+
+  # ---- 基础设施 Exporter ----
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+  - job_name: mysql
+    static_configs:
+      - targets: ["mysqld-exporter:9104"]
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+  - job_name: kafka
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+  - job_name: mongodb
+    static_configs:
+      - targets: ["mongodb-exporter:9216"]
+
+  # ---- Prometheus 自身 ----
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

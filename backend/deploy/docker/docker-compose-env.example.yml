@@ -1,0 +1,74 @@
+# ==============================
+# FAMS 开发环境变量（示例文件）
+# ==============================
+# 使用方式：cp docker-compose-env.example.yml docker-compose-env.yml
+# 生产环境请更换所有密钥与密码
+
+# ---- PostgreSQL (User / Workflow / Inventory) ----
+POSTGRES_USER=fams
+POSTGRES_PASSWORD=fams_dev_pass
+POSTGRES_DB=fams_core
+POSTGRES_PORT=5432
+
+# ---- PostgreSQL 只读账号 (Report Service) ----
+POSTGRES_READ_USER=fams_read
+POSTGRES_READ_PASSWORD=fams_read_pass
+
+# ---- PostgreSQL Report 独立库 ----
+POSTGRES_REPORT_DB=fams_report
+
+# ---- MySQL (Asset Ledger) ----
+MYSQL_ROOT_PASSWORD=fams_root_pass
+MYSQL_DATABASE=fams_asset
+MYSQL_USER=fams
+MYSQL_PASSWORD=fams_dev_pass
+MYSQL_PORT=3306
+
+# ---- MySQL 只读账号 (Report Service) ----
+MYSQL_READ_USER=fams_read
+MYSQL_READ_PASSWORD=fams_read_pass
+
+# ---- MongoDB (Inventory Draft) ----
+MONGO_INITDB_DATABASE=fams_inventory
+MONGO_PORT=27017
+
+# ---- Redis ----
+REDIS_PORT=6379
+
+# ---- Kafka ----
+KAFKA_BROKERS=kafka:9092
+KAFKA_TOPIC_LIFECYCLE=fams-asset-lifecycle-events
+KAFKA_TOPIC_INVENTORY=fams-inventory-comparison-tasks
+KAFKA_NUM_PARTITIONS=3
+
+# ---- etcd ----
+ETCD_HOST=etcd:2379
+ETCD_PORT=2379
+
+# ---- Jaeger ----
+JAEGER_OTLP_ENDPOINT=jaeger:4317
+JAEGER_UI_PORT=16686
+
+# ---- Prometheus ----
+PROMETHEUS_PORT=9090
+
+# ---- Grafana ----
+GRAFANA_PORT=3000
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=fams_dev_pass
+
+# ---- JWT ----
+JWT_ACCESS_SECRET=dev_access_secret_change_me_in_prod
+JWT_REFRESH_SECRET=dev_refresh_secret_change_me_in_prod
+JWT_ACCESS_TTL=2h
+JWT_REFRESH_TTL=24h
+
+# ---- 业务服务端口 ----
+USER_API_PORT=8888
+ASSET_API_PORT=8889
+WORKFLOW_API_PORT=8890
+INVENTORY_API_PORT=8891
+REPORT_API_PORT=8892
+
+# ---- Nginx ----
+NGINX_PORT=80

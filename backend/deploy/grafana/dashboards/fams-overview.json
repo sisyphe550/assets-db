@@ -1,0 +1,90 @@
+{
+  "title": "FAMS Overview",
+  "uid": "fams-overview",
+  "panels": [
+    {
+      "title": "Service Up",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "up{job=~\"fams-.*\"}",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 4 }
+    },
+    {
+      "title": "API QPS",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_code_total[1m])) by (service)",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 }
+    },
+    {
+      "title": "P99 Latency",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(http_server_requests_seconds_bucket[1m])) by (le, service))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 }
+    },
+    {
+      "title": "Kafka Consumer Lag",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "kafka_consumergroup_lag{topic=\"fams-asset-lifecycle-events\"}",
+          "legendFormat": "asset-lifecycle"
+        },
+        {
+          "expr": "kafka_consumergroup_lag{topic=\"fams-inventory-comparison-tasks\"}",
+          "legendFormat": "inventory-comparison"
+        }
+      ],
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 }
+    },
+    {
+      "title": "Workflow Pending",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "fams_workflow_pending",
+          "legendFormat": "stage {{stage}}"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 }
+    },
+    {
+      "title": "Inventory Lock Conflicts",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rate(fams_inventory_lock_conflict_total[5m])",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "gridPos": { "x": 12, "y": 16, "w": 6, "h": 4 }
+    },
+    {
+      "title": "Asset Sync Lag (P99)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, rate(fams_asset_sync_lag_seconds_bucket[5m]))",
+          "legendFormat": "sync lag"
+        }
+      ],
+      "gridPos": { "x": 18, "y": 16, "w": 6, "h": 4 }
+    }
+  ],
+  "schemaVersion": 36
+}

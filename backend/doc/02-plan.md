@@ -2,6 +2,7 @@
 
 > **指导文档**：`doc/01-desgin.md`（含第七章工程实现规范）  
 > **契约文档**：`doc/03-api-contract.md` · `doc/04-workflow-rules.md` · `doc/05-seed-fixtures.md` · `doc/06-error-codes.md` · `doc/07-inventory-ops.md`  
+> **基础设施文档**：`doc/08-infra-config.md`  
 > **执行者**：AI Agent / 开发 Agent  
 > **仓库根路径**：`assets-db/backend/`  
 > **原则**：每个 Phase 独立分支 → 实现 → 测试 → 推送 → PR → Squash 合并 `main`；不得跳过测试；不得跨 Phase 偷跑依赖；**实现前必须先读对应契约文档**。

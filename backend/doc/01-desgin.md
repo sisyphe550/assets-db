@@ -734,3 +734,4 @@ goctl rpc protoc service/user/rpc/user.proto --go_out=service/user/rpc --go-grpc
 | `05-seed-fixtures.md` | 固定 Seed ID/账号（E2E 断言） |
 | `06-error-codes.md` | 按接口列出的完整错误码矩阵 |
 | `07-inventory-ops.md` | 盘点 scope/归档/比对逐步算法 |
+| `08-infra-config.md` | 基础设施文件清单、功能说明、关键设计决策与端口汇总 |
