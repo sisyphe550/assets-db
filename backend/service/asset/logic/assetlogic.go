@@ -1,3 +1,4 @@
+// Package logic 资产服务共享业务逻辑（供 RPC、API、Consumer 复用）
 package logic
 
 import (
@@ -17,28 +18,16 @@ func CheckAssetForWorkflow(ctx context.Context, db *sql.DB, assetID int64, workf
 	}
 
 	switch workflowType {
-	case 1: // 领用
-		if a.Status != 1 {
-			return false, a.DepartmentID, "资产当前不可领用"
-		}
-		if a.UserID != nil {
-			return false, a.DepartmentID, "资产已被领用"
-		}
-	case 2: // 归还
-		if a.Status != 2 {
-			return false, a.DepartmentID, "资产当前不在领用状态"
-		}
-		if a.UserID == nil || *a.UserID != requesterID {
-			return false, a.DepartmentID, "您不是该资产当前领用人，无法归还"
-		}
-	case 3: // 报修
-		if a.Status != 1 && a.Status != 2 {
-			return false, a.DepartmentID, "资产当前不可报修"
-		}
-	case 4: // 报废
-		if a.Status != 1 && a.Status != 3 {
-			return false, a.DepartmentID, "资产当前不可报废"
-		}
+	case 1:
+		if a.Status != 1 { return false, a.DepartmentID, "资产当前不可领用" }
+		if a.UserID != nil { return false, a.DepartmentID, "资产已被领用" }
+	case 2:
+		if a.Status != 2 { return false, a.DepartmentID, "资产当前不在领用状态" }
+		if a.UserID == nil || *a.UserID != requesterID { return false, a.DepartmentID, "您不是该资产当前领用人，无法归还" }
+	case 3:
+		if a.Status != 1 && a.Status != 2 { return false, a.DepartmentID, "资产当前不可报修" }
+	case 4:
+		if a.Status != 1 && a.Status != 3 { return false, a.DepartmentID, "资产当前不可报废" }
 	default:
 		return false, 0, "未知工单类型"
 	}
@@ -47,33 +36,18 @@ func CheckAssetForWorkflow(ctx context.Context, db *sql.DB, assetID int64, workf
 
 // ChangeAssetStatus 变更资产状态（状态机约束）
 func ChangeAssetStatus(ctx context.Context, db *sql.DB, assetID int64, targetStatus int8, userID *int64) error {
-	// 状态机校验（01-desgin.md §7.8 / 04-workflow-rules.md §4）
 	valid := map[int8][]int8{
-		1: {2, 3, 4},
-		2: {1, 3},
-		3: {1, 2, 4},
-		4: {},
+		1: {2, 3, 4}, 2: {1, 3}, 3: {1, 2, 4}, 4: {},
 	}
 	m := model.NewAssetModel(db)
 	a, err := m.FindByID(ctx, assetID)
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	allowed, ok := valid[a.Status]
-	if !ok {
-		return errx.ErrInvalidState
-	}
-	found := false
+	if !ok { return errx.ErrInvalidState }
 	for _, s := range allowed {
-		if s == targetStatus {
-			found = true
-			break
-		}
+		if s == targetStatus { return m.ChangeStatus(ctx, assetID, targetStatus, userID) }
 	}
-	if !found {
-		return errx.ErrInvalidState
-	}
-	return m.ChangeStatus(ctx, assetID, targetStatus, userID)
+	return errx.ErrInvalidState
 }
 
 // GetAsset 获取资产详情
@@ -87,54 +61,38 @@ func ListByDeptIDs(ctx context.Context, db *sql.DB, deptIDs []int64) ([]model.As
 	return list, err
 }
 
-// DedupEvent 消费去重
+// DedupEvent 消费去重，返回 true 表示重复
 func DedupEvent(ctx context.Context, db *sql.DB, requestID int64, eventType string) (bool, error) {
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO asset_event_dedup (request_id, event_type, processed_at) VALUES (?, ?, NOW())`,
-		requestID, eventType)
+		`INSERT INTO asset_event_dedup (request_id, event_type, processed_at) VALUES (?, ?, NOW())`, requestID, eventType)
 	if err != nil {
-		if isMySQLDup2(err) {
-			return true, nil // 重复消息，ACK
-		}
+		if isMySQLDup(err) { return true, nil }
 		return false, err
 	}
 	return false, nil
 }
 
-func isMySQLDup2(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return contains(msg, "Duplicate entry") || contains(msg, "1062")
-}
-
 // CheckAssetScope 校验资产是否在盘点 scope 内
 func CheckAssetScope(ctx context.Context, db *sql.DB, assetNo string, scopeDeptID int64) (bool, error) {
-	// 按 asset_no 查资产，再校验 department_id 是否匹配
-	// 简化版: 直接查 asset_ledger
 	var deptID int64
 	err := db.QueryRowContext(ctx,
 		`SELECT department_id FROM asset_ledger WHERE asset_no=? AND deleted_at IS NULL`, assetNo).Scan(&deptID)
 	if err == sql.ErrNoRows {
-		return true, nil // 未知 asset_no → 可能是盘盈，允许
+		return true, nil // 未知 asset_no → 可能是盘盈，允许提交
 	}
-	if err != nil {
-		return false, err
-	}
-	// 判断是否在 scope 子树内：此处简化，由调用方传入 scope 的全部 deptIDs
-	// v1 简化：只要 department_id != 0 就认为在 scope 内
-	return deptID == scopeDeptID || true, nil
+	if err != nil { return false, err }
+	return deptID == scopeDeptID, nil
+}
+
+func isMySQLDup(err error) bool {
+	if err == nil { return false }
+	msg := err.Error()
+	return contains(msg, "Duplicate entry") || contains(msg, "1062")
 }
 
 func contains(s, sub string) bool {
 	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
+		if s[i:i+len(sub)] == sub { return true }
 	}
 	return false
 }
-
-// 避免未使用 import
-var _ = context.Background

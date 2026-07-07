@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,11 +17,13 @@ import (
 )
 
 type WorkflowHandler struct {
-	DB *sql.DB
-	// AssetRPC 在实际部署中通过 gRPC client 调用
+	DB       *sql.DB
+	AssetRPC string // asset-rpc 地址
 }
 
-func NewWorkflowHandler(db *sql.DB) *WorkflowHandler { return &WorkflowHandler{DB: db} }
+func NewWorkflowHandler(db *sql.DB, assetRPC string) *WorkflowHandler {
+	return &WorkflowHandler{DB: db, AssetRPC: assetRPC}
+}
 
 // POST /workflow/requests
 func (h *WorkflowHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -38,11 +42,20 @@ func (h *WorkflowHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 简化：直接创建工单，前置校验由 asset-rpc 负责
-	// 生产环境应通过 gRPC 调用 asset-rpc.CheckAssetForWorkflow
+	// 调用 asset-rpc 校验资产状态并获取 department_id
+	departmentID := int64(0)
+	if h.AssetRPC != "" {
+		ok, deptID, rejectReason := h.callCheckAsset(req.AssetID, int32(req.Type), uid)
+		if !ok {
+			writeErrMsg(w, 42201, rejectReason)
+			return
+		}
+		departmentID = deptID
+	}
+
 	wf := &model.WorkflowRequest{
 		AssetID: req.AssetID, RequesterID: uid,
-		DepartmentID: 0, // 由 asset-rpc 返回，此处简化
+		DepartmentID: departmentID,
 		Type: req.Type, Reason: req.Reason,
 	}
 	id, err := model.NewWorkflowModel(h.DB).Insert(r.Context(), wf)
@@ -194,6 +207,34 @@ func (h *WorkflowHandler) Reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOK(w, nil)
+}
+
+// callCheckAsset 调用 asset-rpc 校验资产状态
+func (h *WorkflowHandler) callCheckAsset(assetID int64, wfType int32, requesterID int64) (bool, int64, string) {
+	body, _ := json.Marshal(map[string]any{
+		"assetId":      assetID,
+		"workflowType": wfType,
+		"requesterId":  requesterID,
+	})
+	resp, err := http.Post(h.AssetRPC+"/asset.rpc/CheckAssetForWorkflow", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return false, 0, "资产校验服务不可用"
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	var result struct {
+		OK           bool   `json:"ok"`
+		DepartmentID int64  `json:"departmentId"`
+		RejectReason string `json:"rejectReason"`
+	}
+	json.Unmarshal(respBody, &result)
+	return result.OK, result.DepartmentID, result.RejectReason
+}
+
+func writeErrMsg(w http.ResponseWriter, code int, msg string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusUnprocessableEntity)
+	json.NewEncoder(w).Encode(map[string]any{"code": code, "message": msg, "data": nil})
 }
 
 func writeOK(w http.ResponseWriter, data any) {

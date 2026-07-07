@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 
 	_ "github.com/lib/pq"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/sisyphus550/assets-db/backend/pkg/middleware"
 	"github.com/sisyphus550/assets-db/backend/service/report/api/internal/handler"
@@ -18,6 +20,7 @@ func main() {
 	pgDSN := getEnv("POSTGRES_DSN", "postgres://fams:fams_dev_pass@localhost:5432/fams_core?sslmode=disable")
 	reportDSN := getEnv("POSTGRES_REPORT_DSN", "postgres://fams:fams_dev_pass@localhost:5432/fams_report?sslmode=disable")
 	mysqlDSN := getEnv("MYSQL_DSN", "fams:fams_dev_pass@tcp(localhost:3306)/fams_asset?parseTime=true")
+	redisAddr := getEnv("REDIS_ADDR", "localhost:6379")
 
 	pg, _ := sql.Open("postgres", pgDSN)
 	reportDB, _ := sql.Open("postgres", reportDSN)
@@ -26,7 +29,13 @@ func main() {
 	defer reportDB.Close()
 	defer mysql.Close()
 
-	h := handler.NewReportHandler(pg, reportDB, mysql)
+	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
+	if err := rdb.Ping(context.Background()).Err(); err != nil {
+		log.Printf("WARNING: Redis not available, export queue disabled: %v", err)
+		rdb = nil
+	}
+
+	h := handler.NewReportHandler(pg, reportDB, mysql, rdb)
 
 	mux := http.NewServeMux()
 	authMux := http.NewServeMux()

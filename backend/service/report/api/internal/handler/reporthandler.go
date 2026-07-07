@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/sisyphus550/assets-db/backend/pkg/errx"
 	"github.com/sisyphus550/assets-db/backend/pkg/middleware"
@@ -17,10 +18,11 @@ type ReportHandler struct {
 	PG       *sql.DB
 	ReportDB *sql.DB
 	MySQL    *sql.DB
+	RDB      *redis.Client
 }
 
-func NewReportHandler(pg, reportDB, mysql *sql.DB) *ReportHandler {
-	return &ReportHandler{PG: pg, ReportDB: reportDB, MySQL: mysql}
+func NewReportHandler(pg, reportDB, mysql *sql.DB, rdb *redis.Client) *ReportHandler {
+	return &ReportHandler{PG: pg, ReportDB: reportDB, MySQL: mysql, RDB: rdb}
 }
 
 // GET /report/assets/by-dept
@@ -126,6 +128,15 @@ func (h *ReportHandler) Export(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+
+	// 投递到 Redis 队列
+	if h.RDB != nil {
+		jobJSON, _ := json.Marshal(map[string]any{
+			"jobId": jobID, "exportType": req.ExportType, "creatorId": uid,
+		})
+		h.RDB.LPush(r.Context(), "fams:export:queue", string(jobJSON))
+	}
+
 	writeOK(w, map[string]any{"jobId": jobID})
 }
 

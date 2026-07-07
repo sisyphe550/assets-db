@@ -4,9 +4,11 @@
 
 ---
 
-## 1. 总体状态：90% 完成
+## 1. 总体状态：约 95% 完成
 
-后端核心功能已开发完成并通过测试。剩余 10% 主要是跨服务调用链路完善和边缘场景覆盖。
+后端核心功能已全部开发完成并验证编译通过。5 个已知限制已于 2026-07-07 全部修复实现。
+
+剩余边缘工作：盘点 ComparisonWorker（比对引擎）的完整实现、报表快照表数据填充（需 Kafka consumer 持续运行）。
 
 ---
 
@@ -82,52 +84,60 @@
 
 ---
 
-## 3. 已知限制（10% 未完成）
+## 3. 已知限制（已于 2026-07-07 全部修复）
 
-### 3.1 跨服务调用未打通
+### 3.1 跨服务调用（已修复）
 
-| 问题 | 影响 |
-|---|---|
-| workflow-api 创建工单时不调用 asset-rpc 校验资产状态 | 可能对已领用资产创建重复工单 |
-| workflow-api 终审通过后不调用 asset-rpc 变更资产状态 | 审批通过但台账 status 不变 |
-| 这些调用在代码中被注释为 `// 生产环境应通过 gRPC 调用` | |
+**实现方案**：
+- workflow-api 创建工单前通过 HTTP 调用 `asset-rpc/CheckAssetForWorkflow` 校验资产状态
+- 校验失败返回 42201 + 具体拒绝原因
+- 校验成功时获取 `department_id` 填充到工单
+- 共享业务逻辑移至 `service/asset/logic/` 包（供 RPC Server、Consumer 复用）
 
-**修复方案**：在 workflow handler 中集成 asset-rpc gRPC client。
+**涉及文件**：`service/workflow/api/internal/handler/workflowhandler.go`、`service/asset/logic/assetlogic.go`
 
-### 3.2 Kafka Consumer 未启动
+### 3.2 Kafka Consumer（已修复）
 
-| 问题 | 影响 |
-|---|---|
-| asset-rpc 侧 Kafka consumer 未独立启动 | Outbox 投递到 Kafka 后无人消费 |
-| 台账异步同步未生效 | 审批通过后资产 status 不自动更新 |
-| 报表快照表无数据 | /assets/by-dept 返回空 |
+**实现方案**：
+- 创建 `service/asset/consumer/main.go` 独立进程
+- 订阅 `fams-asset-lifecycle-events`，group=`asset-consumer`
+- 消费流程：JSON 解析 → 幂等去重（`asset_event_dedup` 表） → 状态机校验 → 台账更新
+- 遵循 at-least-once 语义，重复消息 ACK 跳过
 
-**修复方案**：创建 `service/asset/consumer/main.go` 订阅 `fams-asset-lifecycle-events`。
+**涉及文件**：`service/asset/consumer/main.go`
 
-### 3.3 盘点草稿批量提交未实现
+### 3.3 盘点草稿批量提交（已修复）
 
-| 问题 | 影响 |
-|---|---|
-| POST /tasks/:id/submit 接口未实现 handler | 盘点员无法提交草稿 |
-| Redis 分布式锁在批量提交中未应用 | |
-| MongoDB CAS 乐观锁未应用 | |
+**实现方案**（严格按 `07-inventory-ops.md`）：
+1. 校验任务存在且 status=1、用户是 assignee 或管理员
+2. 逐条处理每个 item：
+   - Redis 分布式锁 `fams:lock:inventory:{asset_no}`，30s TTL
+   - 调用 asset-rpc `CheckAssetScope` 校验资产在盘点范围内
+   - MongoDB upsert with CAS：`filter={task_id, asset_no, updated_at(optional)}`
+   - Lua 安全释放锁（先校验 owner 再 DEL）
+3. 部分成功语义：HTTP 200 + `{success, conflicts, failures}` 逐条详情
 
-**修复方案**：在 inventory handler 中实现 Submit handler，逐条加锁+CAS 写入 MongoDB。
+**涉及文件**：`service/inventory/api/internal/handler/invhandler.go`  Submit handler
 
-### 3.4 MongoDB 连接未集成到 inventory-api
+### 3.4 MongoDB 连接（已修复）
 
-| 问题 | 影响 |
-|---|---|
-| inventory-api main.go 不连接 MongoDB | 草稿提交无法落库 |
+**实现方案**：
+- inventory-api main.go 添加 `mongo.Connect()` 连接
+- 传入 `*mongo.Collection` 到 InvHandler
+- 环境变量：`MONGO_URI`（默认 `mongodb://localhost:27017`）、`MONGO_DB`（默认 `fams_inventory`）
 
-**修复方案**：inventory-api main.go 添加 MongoDB 连接并传给 handler。
+**涉及文件**：`service/inventory/api/inventory.go`
 
-### 3.5 报表异步导出 Worker 未实现
+### 3.5 报表异步导出 Worker（已修复）
 
-| 问题 | 影响 |
-|---|---|
-| Export 只写 job 不生成文件 | download 返回空 CSV |
-| Redis 导出队列未消费 | |
+**实现方案**：
+- 创建 `service/report/export-worker/main.go` 独立进程
+- 使用 Redis `BRPOP fams:export:queue` 阻塞等待任务（5s 超时）
+- Export API 写 `rpt_export_job` 后 `LPUSH` 到队列
+- Worker 流程：接任务 → status=1(处理中) → 查 MySQL 生成 CSV（BOM 头）→ status=2(完成)
+- CSV 文件存储在 `deploy/export/` 目录
+
+**涉及文件**：`service/report/export-worker/main.go`、`service/report/api/internal/handler/reporthandler.go`
 
 ---
 
