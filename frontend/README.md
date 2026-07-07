@@ -22,6 +22,7 @@
 | `doc/02-directory.md` | 完整目录树、pages vs components 分界、Layout 差异、Univer 封装设计、构建流程 |
 | `doc/03-pages.md` | 10 个页面详细交互设计、审批按钮逻辑、盘点三阶段、跨页面数据流、错误处理策略 |
 | `doc/04-backend-api.md` | 后端 API 参考：全部 5 服务端点、鉴权流程、错误码、业务枚举、关键业务规则 |
+| `doc/05-components.md` | 组件规格：Props/loading-empty-error 三态/表单校验规则汇总 |
 
 ## 快速开始
 

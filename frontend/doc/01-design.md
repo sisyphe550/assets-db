@@ -42,9 +42,113 @@
 
 ---
 
-## 二、状态管理设计
+## 二、UI 设计规范（已定稿）
 
-### 2.1 Store 划分
+### 2.1 布局
+
+采用 **侧边栏 + 顶栏** 经典后台布局：
+
+```
+┌──────────────────────────────────────────┐
+│  🏫  高校固定资产管理系统       [用户▾]  │ ← 顶栏 48px，深色背景
+├────────┬─────────────────────────────────┤
+│ 仪表盘 │                                 │
+│ 资产   │                                 │
+│ 工单   │        内容区                    │
+│ 用户   │     padding: 24px               │
+│ 盘点   │     background: #f5f5f5         │
+│ 报表   │                                 │
+│        │                                 │
+│        │                                 │
+└────────┴─────────────────────────────────┘
+    ↑
+   侧边栏 220px（可折叠 → 80px）
+   Ant Design Layout + Sider + Menu 实现
+```
+
+**Layout 组件结构**（三个角色共用同一套）：
+
+```typescript
+// 所有角色 Layout 的基类
+<Layout style={{ minHeight: '100vh' }}>
+  <Sider collapsible breakpoint="lg" width={220}>
+    <SidebarMenu roleLevel={user.roleLevel} />
+  </Sider>
+  <Layout>
+    <Header style={{ background: '#001529', padding: '0 24px' }}>
+      <TopHeader />
+    </Header>
+    <Content style={{ margin: 24 }}>
+      <Outlet />  {/* 页面内容 */}
+    </Content>
+  </Layout>
+</Layout>
+```
+
+三个角色的差异仅在 `SidebarMenu` 的菜单项：
+
+| 角色 | 侧边栏菜单项 |
+|---|---|
+| role=1 校级 | 仪表盘、资产管理、工单审批、组织架构、用户管理、盘点管理、统计报表 |
+| role=2 院级 | 仪表盘、本院资产、工单审批、盘点管理 |
+| role=3 师生 | 我的资产、我的工单、新建申请、盘点录入 |
+
+### 2.2 色彩
+
+| 用途 | 色值 | 说明 |
+|---|---|---|
+| 主色 | `#1677FF`（Ant Design 默认蓝） | 按钮、链接、选中态 |
+| 顶栏/Sider | `#001529` | 深色背景 |
+| 内容区背景 | `#f5f5f5` | 浅灰 |
+| 卡片背景 | `#ffffff` | 白色 |
+| 成功/在库/相符 | `#52c41a` (green) | Tag/徽标 |
+| 进行中/领用中 | `#1677ff` (blue) | Tag/徽标 |
+| 警告/维修中/盘盈 | `#faad14` (orange) | Tag/徽标 |
+| 错误/已报废/盘亏/驳回 | `#ff4d4f` (red) | Tag/徽标 |
+
+直接使用 Ant Design 默认主题色，不自定义 Design Token。
+
+### 2.3 字体
+
+- 系统默认字体栈：`-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`
+- 代码/资产编号：`'SF Mono', Monaco, 'Cascadia Code', monospace`
+- 字号层级：标题 20px / 副标题 16px / 正文 14px / 辅助文字 12px
+
+### 2.4 间距
+
+- 页面内容区 padding：24px
+- 卡片之间间距：16px
+- 表单项间距：Ant Design 默认（`<Form>` 不指定 layout 时垂直排列，间距 24px）
+- 按钮间距：8px（`<Space size={8}>`）
+
+### 2.5 关键组件选择
+
+| 场景 | 组件 | 理由 |
+|---|---|---|
+| 数据表格 | `<ProTable>` | 自带搜索栏、分页、列设置、导出，减少 50% 表格代码 |
+| 创建/编辑表单 | 新页面（非弹窗） | 资产/用户表单字段多，弹窗太窄 |
+| 审批操作 | `<Drawer>` | 不离开工单列表，右侧滑出详情+审批 |
+| 状态标签 | `<Tag color="...">` | 在库=success, 领用中=processing, 维修中=warning, 已报废=error |
+| 审批时间线 | `<Timeline>` | 最直观展示"提交→院审→校审"流程 |
+| 部门选择 | `<TreeSelect>` | 表单中用，支持搜索 |
+| 组织树管理 | `<Tree>` | 组织架构管理页用，支持拖拽 |
+| 统计数字 | `<Statistic>` | 仪表盘用 |
+| 图表 | 暂用 Ant Design Charts 或 ECharts | 仪表盘饼图/柱状图 |
+| 盘点冲突结果 | `<Alert type="error">` + ProTable `rowClassName` | 冲突行标红 |
+
+### 2.6 响应式策略
+
+**v1 仅支持桌面端**（≥1200px）。后台管理系统的主流用户使用台式机/笔记本，移动端的表单操作（特别是资产录入和盘点 Univer 表格）体验极差。
+
+- 最小支持宽度：1200px
+- ProTable `scroll={{ x: 'max-content' }}` 处理表格溢出
+- Sider 在小屏幕自动折叠：`breakpoint="lg"`
+
+---
+
+## 三、状态管理设计
+
+### 3.1 Store 划分
 
 ```
 store/
@@ -62,7 +166,7 @@ store/
     └── uiSlice.ts          #   sidebar 折叠 / 主题
 ```
 
-### 2.2 为什么这样划分？
+### 3.2 为什么这样划分？
 
 **api/ 和 slices/ 严格分离**：
 - `api/` 中的代码只做"从后端拿数据、缓存数据、失效数据"——RTK Query 负责
@@ -70,7 +174,7 @@ store/
 
 这种分离让你不会把"从 API 获取资产列表"和"用户点击了一个按钮后 UI 变化"混在一起。
 
-### 2.3 RTK Query tag-based invalidation 示例
+### 3.3 RTK Query tag-based invalidation 示例
 
 ```typescript
 // store/api/assetApi.ts
@@ -100,7 +204,7 @@ export const assetApi = createApi({
 
 关键机制：`createAsset` 成功后自动触发 `getAssets` 重新请求（因为 `invalidatesTags: ['AssetList']`）。
 
-### 2.4 Auth Slice 结构
+### 3.4 Auth Slice 结构
 
 ```typescript
 interface AuthState {
@@ -125,9 +229,9 @@ interface AuthState {
 
 ---
 
-## 三、路由设计
+## 四、路由设计
 
-### 3.1 路由结构
+### 4.1 路由结构
 
 ```
 /login                        # 登录页
@@ -163,7 +267,7 @@ interface AuthState {
   /user/inventory/:taskId      #  盘点录入
 ```
 
-### 3.2 为什么三个角色分开路由？
+### 4.2 为什么三个角色分开路由？
 
 | 方案 | 优点 | 缺点 |
 |---|---|---|
@@ -174,7 +278,7 @@ interface AuthState {
 - `/admin/assets/:id`、`/college/assets/:id` 都渲染同一个 `<AssetDetail />` 组件
 - 区别只在于路由 Layout 的侧边栏和顶层权限守卫
 
-### 3.3 路由守卫
+### 4.3 路由守卫
 
 ```typescript
 // 每个 Layout Route 入口处
@@ -188,7 +292,7 @@ function RequireRole({ role, children }: { role: number; children: React.ReactNo
 
 ---
 
-## 四、目录结构设计
+## 五、目录结构设计
 
 ```
 frontend/
@@ -259,7 +363,7 @@ frontend/
 
 ---
 
-## 五、TypeScript 类型（对齐后端契约）
+## 六、TypeScript 类型（对齐后端契约）
 
 ```typescript
 // types/api.ts — 与 backend/doc/03-api-contract.md 严格对齐
@@ -358,7 +462,7 @@ interface DeptTreeNode {
 
 ---
 
-## 六、枚举映射（前端展示用）
+## 七、枚举映射（前端展示用）
 
 ```typescript
 // utils/constants.ts
@@ -405,7 +509,7 @@ export const INVENTORY_DIFF_MAP: Record<number, { label: string; color: string }
 
 ---
 
-## 七、与其他系统的集成
+## 八、与其他系统的集成
 
 | 系统 | 集成方式 |
 |---|---|
