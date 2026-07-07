@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/sisyphus550/assets-db/backend/pkg/dept"
@@ -20,6 +21,7 @@ import (
 // UserHandler 用户 API 处理器
 type UserHandler struct {
 	DB             *sql.DB
+	RDB            *redis.Client
 	AccessSecret   string
 	RefreshSecret  string
 	AccessTTL      time.Duration
@@ -27,9 +29,9 @@ type UserHandler struct {
 }
 
 // NewUserHandler 创建处理器
-func NewUserHandler(db *sql.DB, accessSecret, refreshSecret string, accessTTL, refreshTTL time.Duration) *UserHandler {
+func NewUserHandler(db *sql.DB, rdb *redis.Client, accessSecret, refreshSecret string, accessTTL, refreshTTL time.Duration) *UserHandler {
 	return &UserHandler{
-		DB: db, AccessSecret: accessSecret, RefreshSecret: refreshSecret,
+		DB: db, RDB: rdb, AccessSecret: accessSecret, RefreshSecret: refreshSecret,
 		AccessTTL: accessTTL, RefreshTTL: refreshTTL,
 	}
 }
@@ -77,6 +79,9 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		"expiresIn":    int64(h.AccessTTL.Seconds()),
 		"tokenType":    "Bearer",
 	})
+	if h.RDB != nil {
+		h.RDB.Set(r.Context(), "fams:auth:token:"+strconv.FormatInt(u.ID,10), accessToken, h.AccessTTL)
+	}
 	_ = jti
 }
 
@@ -107,6 +112,11 @@ func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 旧 Refresh Token 黑名单（防重用）
+	if h.RDB != nil && claims.ID != "" {
+		h.RDB.Set(r.Context(), "fams:auth:blacklist:"+claims.ID, "1", h.RefreshTTL)
+	}
+
 	accessToken, refreshToken, jti, err := middleware.GenerateTokens(
 		claims.UID, claims.RoleLevel, claims.DeptID,
 		h.AccessSecret, h.RefreshSecret, h.AccessTTL, h.RefreshTTL)
@@ -129,8 +139,14 @@ func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 // ==========================================
 
 func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	// 黑名单处理由中间件在后续请求中完成
-	// 此处仅返回成功（简化实现；生产环境应写 Redis 黑名单）
+	uid, _ := middleware.GetUID(r.Context())
+	jti, _ := middleware.GetJti(r.Context())
+	if h.RDB != nil {
+		if jti != "" {
+			h.RDB.Set(r.Context(), "fams:auth:blacklist:"+jti, "1", h.AccessTTL)
+		}
+		h.RDB.Del(r.Context(), "fams:auth:token:"+strconv.FormatInt(uid, 10))
+	}
 	writeOK(w, nil)
 }
 
