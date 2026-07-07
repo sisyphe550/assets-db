@@ -4,11 +4,28 @@
 
 ---
 
-## 1. 总体状态：约 95% 完成
+## 1. 总体状态：开发完成
 
-后端核心功能已全部开发完成并验证编译通过。5 个已知限制已于 2026-07-07 全部修复实现。
+所有计划功能已实现，全链路端到端验证通过。
 
-剩余边缘工作：盘点 ComparisonWorker（比对引擎）的完整实现、报表快照表数据填充（需 Kafka consumer 持续运行）。
+### 全链路验证（2026-07-07）
+
+```
+Create workflow → College approve → School approve
+    → Outbox write (同一 PG 事务)
+    → Dispatcher poll → Kafka (status 0→1)
+    → Consumer read → Dedup check → Asset status change
+    → Asset 505: 在库(1) → 领用中(2), user_id: NULL → 10003
+```
+
+### 两个独立 Worker 进程
+
+| Worker | 功能 | 状态 |
+|---|---|---|
+| `outbox-dispatcher` | 轮询 `workflow_outbox` → Kafka | 端到端验证 |
+| `asset-consumer` | 订阅 `fams-asset-lifecycle-events` → 台账同步 | 端到端验证 |
+| `comparison-worker` | 订阅 `fams-inventory-comparison-tasks` → 账实比对 | 代码已实现 |
+| `export-worker` | Redis BRPOP → CSV 生成 | 代码已实现 |
 
 ---
 
