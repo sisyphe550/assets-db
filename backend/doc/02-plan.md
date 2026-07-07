@@ -1,9 +1,10 @@
 # FAMS 后端开发任务书（AI Agent 执行版）
 
 > **指导文档**：`doc/01-desgin.md`（含第七章工程实现规范）  
+> **契约文档**：`doc/03-api-contract.md` · `doc/04-workflow-rules.md` · `doc/05-seed-fixtures.md` · `doc/06-error-codes.md` · `doc/07-inventory-ops.md`  
 > **执行者**：AI Agent / 开发 Agent  
 > **仓库根路径**：`assets-db/backend/`  
-> **原则**：每个 Phase 独立分支 → 实现 → 测试 → 推送 → PR → Squash 合并 `main`；不得跳过测试；不得跨 Phase 偷跑依赖。
+> **原则**：每个 Phase 独立分支 → 实现 → 测试 → 推送 → PR → Squash 合并 `main`；不得跳过测试；不得跨 Phase 偷跑依赖；**实现前必须先读对应契约文档**。
 
 ---
 
@@ -106,6 +107,19 @@ git branch -d feat/pX-xxx
 | `postgres-exporter` | 官方 exporter | 依赖 postgres |
 | `mysqld-exporter` | 官方 exporter | 依赖 mysql |
 | `redis-exporter` | 官方 exporter | 依赖 redis |
+| `kafka-exporter` | `danielqsj/kafka-exporter` | 依赖 kafka |
+| `mongodb-exporter` | `percona/mongodb_exporter` | 依赖 mongo |
+
+**Prometheus 配置**：`deploy/prometheus/prometheus.yml` 必须 scrape 全部 exporter + 预留 go-zero metrics 目标（见 `01-desgin.md` §7.7–§7.8）。
+
+**Grafana 最小 Panel（`deploy/grafana/dashboards/fams-overview.json`）**：
+
+| Panel | PromQL（示例） |
+| --- | --- |
+| 服务存活 | `up{job=~"fams-.*"}` |
+| API QPS | `sum(rate(http_server_requests_code_total[1m]))` |
+| Kafka Lag | `kafka_consumergroup_lag{topic="fams-asset-lifecycle-events"}` |
+| 审批积压 | `fams_workflow_pending` |
 
 **Kafka 预创建 Topic**（通过 init 容器或 kafka 配置）：
 
@@ -118,14 +132,20 @@ git branch -d feat/pX-xxx
 # 示例结构（实际文件为 KEY=VALUE 或 env_file 格式）
 POSTGRES_USER=fams
 POSTGRES_PASSWORD=fams_dev_pass
-POSTGRES_DB=fams_user
+POSTGRES_DB=fams_core
 POSTGRES_PORT=5432
+POSTGRES_REPORT_DB=fams_report
 
 MYSQL_ROOT_PASSWORD=fams_root_pass
 MYSQL_DATABASE=fams_asset
 MYSQL_USER=fams
 MYSQL_PASSWORD=fams_dev_pass
 MYSQL_PORT=3306
+MYSQL_READ_USER=fams_read
+MYSQL_READ_PASSWORD=fams_read_pass
+
+POSTGRES_READ_USER=fams_read
+POSTGRES_READ_PASSWORD=fams_read_pass
 
 MONGO_INITDB_DATABASE=fams_inventory
 MONGO_PORT=27017
@@ -150,12 +170,14 @@ JWT_REFRESH_TTL=24h
 
 ### P0.4 DDL 要求
 
-**PostgreSQL `001_init.sql`** 必须创建 schema 并包含 `01-desgin.md` 4.2.1–4.2.5、4.2.7–4.2.9 全部表及索引：
+**PostgreSQL `001_init.sql`** 必须创建 schema 并包含 `01-desgin.md` 4.2.1–4.2.5、4.2.7–4.2.10 全部表及索引：
 
 - `sys_department`, `sys_user`
 - `workflow_request` + `uk_asset_open_request` 部分唯一索引
 - `workflow_log`, `workflow_outbox`
-- `inventory_task`, `inventory_record` + `uk_task_asset` 部分唯一索引
+- `inventory_task`, `inventory_task_assignee`, `inventory_record` + `uk_task_asset` 部分唯一索引
+
+**PostgreSQL `003_report_init.sql`**：`fams_report` 库及 4.2.11–4.2.12 表。
 
 **MySQL `001_init.sql`** 必须包含：
 
@@ -169,13 +191,14 @@ JWT_REFRESH_TTL=24h
 - 复合索引 `{ task_id: 1, asset_no: 1 }` 唯一
 - 索引 `{ task_id: 1, updated_at: 1 }`
 
-### P0.5 Seed 数据（`deploy/sql/postgres/002_seed.sql`）
+### P0.5 Seed 数据
 
-| 数据 | 要求 |
+**严格按 `05-seed-fixtures.md` 固定 ID 写入**，不得使用随机 ID。
+
+| 文件 | 内容 |
 | --- | --- |
-| 组织树 | 根节点「本校」+ 至少 1 个学院 + 2 个实验室，`path` 正确 |
-| 用户 | 校级管理员 1、学院管理员 1、普通师生 2；密码统一 `Test@123456` 的 bcrypt hash |
-| 资产 | 在 MySQL seed 中至少 5 条，`department_id` 与 PG 组织对应 |
+| `deploy/sql/postgres/002_seed.sql` | 组织树 + 5 个用户 |
+| `deploy/sql/mysql/002_seed.sql` | 5 条资产 |
 
 ### P0.6 边界条件与报错处理
 
@@ -258,7 +281,7 @@ func ToHttpError(err error) (code int, httpStatus int, message string)
 func ToGrpcError(err error) error
 ```
 
-**必须注册的错误码**（与 01-desgin 7.3 一致）：`40101`, `40102`, `40301`, `40302`, `40401`, `40901`, `40902`, `42201`, `50001`, `50301`。
+**必须注册的错误码**：完整表见 `06-error-codes.md` §2，P1 阶段全部实现。
 
 **边界**：
 
@@ -393,15 +416,19 @@ service/user/
 
 ### P2.2 API 接口清单
 
+> **完整 Request/Response 见 `03-api-contract.md` §1**
+
 | 方法 | 路径 | 鉴权 | 说明 |
 | --- | --- | --- | --- |
-| POST | `/api/v1/user/login` | 否 | 登录，返回 access + refresh token |
+| POST | `/api/v1/user/login` | 否 | 登录 |
 | POST | `/api/v1/user/refresh` | Refresh Token | 续期 |
-| POST | `/api/v1/user/logout` | Access Token | 写黑名单 + 删 Redis session |
-| GET | `/api/v1/user/me` | 是 | 当前用户信息 |
-| GET | `/api/v1/user/departments/tree` | 是 | 组织树（按权限裁剪） |
-| POST | `/api/v1/user/departments` | role=1 | 新增组织节点 |
-| PUT | `/api/v1/user/users/:id/status` | role=1,2 | 禁用/启用，写黑名单 |
+| POST | `/api/v1/user/logout` | Access Token | 登出 |
+| GET | `/api/v1/user/me` | 是 | 当前用户 |
+| GET | `/api/v1/user/departments/tree` | 是 | 组织树 |
+| POST | `/api/v1/user/departments` | role=1 | 新增组织 |
+| POST | `/api/v1/user/users` | role=1,2 | **管理员创建用户（非自助注册）** |
+| PUT | `/api/v1/user/users/:id/status` | role=1,2 | 禁用/启用 |
+| POST | `/api/v1/user/users/:id/force-logout` | role=1,2 | 强制下线 |
 
 ### P2.3 RPC 接口清单（user.proto）
 
@@ -493,20 +520,23 @@ git push -u origin feat/p2-user-service
 | GET | `/api/v1/asset/assets` | 子树隔离 | 分页列表 |
 | GET | `/api/v1/asset/assets/:id` | 子树隔离 | 详情 |
 | PUT | `/api/v1/asset/assets/:id` | role≤2 + 子树 | 编辑 |
-| DELETE | `/api/v1/asset/assets/:id` | role≤2 | 逻辑删除（status=0 或 deleted_at） |
-| GET | `/api/v1/asset/assets/shared` | role=3 | 学院内共享资产只读 |
+| DELETE | `/api/v1/asset/assets/:id` | role≤2 | 逻辑删除：写 `deleted_at`（见 01-desgin 4.2.3） |
+| GET | `/api/v1/asset/assets/shared` | role=3 | 学院内 `is_shared=1` 只读（过滤规则见 03-api-contract §2.6） |
 
 **列表过滤**：`department_id IN (:subtree)`；校级不过滤。
 
 ### P3.2 RPC 接口（asset.proto）
 
+> 见 `03-api-contract.md` §6
+
 ```protobuf
 rpc GetAsset(GetAssetReq) returns (GetAssetResp);
-rpc CheckAssetAvailable(CheckAssetAvailableReq) returns (CheckAssetAvailableResp); // status 必须为在库
-rpc ChangeAssetStatus(ChangeAssetStatusReq) returns (ChangeAssetStatusResp);     // 内部/Kafka 调用
+rpc CheckAssetForWorkflow(CheckAssetForWorkflowReq) returns (CheckAssetForWorkflowResp);
+rpc ChangeAssetStatus(ChangeAssetStatusReq) returns (ChangeAssetStatusResp);
+rpc ListAssetsByDeptIds(ListAssetsByDeptIdsReq) returns (ListAssetsByDeptIdsResp);
 ```
 
-`CheckAssetAvailable` 返回 `department_id` 供 workflow 冗余。
+`CheckAssetForWorkflow` 按工单 type 分支校验，规则见 `04-workflow-rules.md` §2。
 
 **状态机约束**：
 
@@ -565,7 +595,10 @@ git push -u origin feat/p3-asset-service
 
 **分支**：`feat/p4-workflow-service`  
 **依赖**：P2, P3  
-**目标**：两级审批、Outbox、Dispatcher 进程、对账任务。
+**目标**：四种工单两级审批、Outbox、Dispatcher、对账。  
+**必读**：`04-workflow-rules.md`（状态机唯一权威来源）
+
+> **Out of Scope v1**：`POST /workflow/requests/:id/transfer` 不实现（01-desgin §7.11）
 
 ### P4.1 组件
 
@@ -584,15 +617,16 @@ git push -u origin feat/p3-asset-service
 | GET | `/api/v1/workflow/requests/:id` | 相关人可见 | 详情含 log |
 | POST | `/api/v1/workflow/requests/:id/approve` | role≤2 | 同意 |
 | POST | `/api/v1/workflow/requests/:id/reject` | role≤2 | 驳回 |
-| POST | `/api/v1/workflow/requests/:id/transfer` | role≤2 | 转办（可选） |
 
-### P4.3 创建工单逻辑（5.2）
+### P4.3 创建工单逻辑
+
+> 完整规则 `04-workflow-rules.md` §2；API 契约 `03-api-contract.md` §3
 
 ```
-1. gRPC asset.CheckAssetAvailable(asset_id)
-   - 失败 → 42201 / 40401
-2. INSERT workflow_request (status=1, current_stage=1, department_id=资产部门)
-   - 唯一索引冲突 → 40902「该资产已有进行中的申请」
+1. gRPC asset.CheckAssetForWorkflow(asset_id, type, requester_id)
+   - 失败 → 42201 / 40403
+2. INSERT workflow_request (status=1, current_stage=1, department_id=返回的部门)
+   - 唯一索引冲突 → 40902
 3. INSERT workflow_log (action='提交申请')
 ```
 
@@ -636,13 +670,11 @@ go test ./service/workflow/... -short -v
 go test ./tests/integration/workflow/... -tags=integration -v
 ```
 
-**集成测试全链路**：
+**集成测试全链路**（领用 + 归还各一条，见 `05-seed-fixtures.md`）：
 
-1. 师生登录 → 创建领用申请
-2. 学院管理员初审通过
-3. 校级管理员终审通过
-4. 等待 consumer → 断言 MySQL asset status=2, user_id=申请人
-5. 并发双申请同一 asset → 一个 40902
+1. student_001 登录 → 对 asset 501 创建领用 → 院审 → 校审 → asset status=2
+2. student_001 对 asset 503 创建归还 → 院审 → 校审 → asset status=1, user_id=NULL
+3. 并发双申请 asset 501 → 40902
 
 ### P4.8 Git
 
@@ -658,16 +690,18 @@ git push -u origin feat/p4-workflow-service
 
 **分支**：`feat/p5-inventory-service`  
 **依赖**：P3, P0  
-**目标**：盘点任务、批量草稿提交、Redis 锁、MongoDB CAS、比对 Worker。
+**目标**：盘点任务、指派、批量草稿、Redis 锁、MongoDB CAS、归档、比对 Worker。  
+**必读**：`07-inventory-ops.md`
 
 ### P5.1 API 接口
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| POST | `/api/v1/inventory/tasks` | role≤2 | 创建盘点任务 |
+| POST | `/api/v1/inventory/tasks` | role≤2 | 创建任务（含 assigneeIds） |
 | GET | `/api/v1/inventory/tasks` | role≤2 | 任务列表 |
-| POST | `/api/v1/inventory/tasks/:id/submit` | role≤3 | 批量提交草稿 |
-| POST | `/api/v1/inventory/tasks/:id/archive` | role≤2 | 终结归档 |
+| GET | `/api/v1/inventory/tasks/:id/expected-assets` | 指派员/管理员 | 应盘资产清单 |
+| POST | `/api/v1/inventory/tasks/:id/submit` | 指派员 | 批量提交草稿 |
+| POST | `/api/v1/inventory/tasks/:id/archive` | role≤2 | 终结归档（支持 force） |
 | GET | `/api/v1/inventory/tasks/:id/records` | 子树 | 比对结果 |
 
 ### P5.2 批量提交请求/响应
@@ -715,22 +749,11 @@ for item in items:
 
 ### P5.3 归档与比对
 
-**archive**：
+**完整算法见 `07-inventory-ops.md` §5–§6**，此处仅列验收点：
 
-1. 校验任务 status=1，当前时间在窗口内或管理员强制
-2. Mongo 聚合该 task 全部 draft
-3. PG 事务批量 INSERT inventory_record（is_scanned=1）
-4. 未出现在 draft 中的账面资产 → 后续 Worker 判盘亏
-5. UPDATE task status=2
-6. 发送 Kafka `fams-inventory-comparison-tasks`
-
-**comparison-worker**：
-
-- 消费消息，按 task_id 拉取 records
-- 调 asset-rpc 查账面
-- 判定 diff_status：相符/盘盈/盘亏（见 5.3）
-- UPDATE inventory_record.diff_status
-- metric `fams_inventory_diff_total{type}` ++
+- archive 事务写入 scanned + unscanned 两类 inventory_record
+- Worker 完成后 task.status=3
+- diff_status 三类计数与 `rpt_inventory_diff_summary` 一致
 
 ### P5.4 边界条件
 
@@ -778,20 +801,26 @@ git push -u origin feat/p5-inventory-service
 | PostgreSQL 只读副本 | 工单/盘点只读 |
 | Kafka 消费 | 写入 report 库聚合表 |
 
-**report 库表（PG 或 MySQL 独立 schema）**：
+**report 库表**：`01-desgin.md` 4.2.11–4.2.12
 
-- `rpt_asset_daily_snapshot`
-- `rpt_workflow_summary`
-- `rpt_inventory_diff_summary`
+**导出实现**：
+
+- `POST /export` 写 `rpt_export_job` status=0，投递 Redis 队列 `fams:export:queue`
+- `report-export-worker` 消费，读只读副本生成 CSV 至 `deploy/export/` 或 MinIO（v1 可用本地目录）
+- `GET /export/:jobId` 查状态；`GET /export/:jobId/download` 下载
 
 ### P6.2 API 接口
+
+> 完整契约 `03-api-contract.md` §5
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/v1/report/assets/by-dept` | 各学院资产数量 |
 | GET | `/api/v1/report/assets/by-category` | 类型分布 |
 | GET | `/api/v1/report/inventory/diff/:taskId` | 盘点差异统计 |
-| POST | `/api/v1/report/export` | 异步导出，返回 jobId |
+| POST | `/api/v1/report/export` | 异步导出 → jobId |
+| GET | `/api/v1/report/export/:jobId` | 查询进度 |
+| GET | `/api/v1/report/export/:jobId/download` | 下载 CSV |
 
 **约束**：
 
@@ -949,13 +978,24 @@ git push -u origin feat/p8-nginx-gateway
 
 ### P9.1 E2E 测试场景（`tests/e2e/`）
 
-| 场景 ID | 描述 |
-| --- | --- |
-| E2E-01 | 登录 → 创建资产 → 查询列表 |
-| E2E-02 | 领用申请 → 院审 → 校审 → 台账 status=2 |
-| E2E-03 | 盘点任务 → 双人提交冲突 → 归档 → 差异统计 |
-| E2E-04 | 禁用用户 → 已有 token 访问 → 40102 |
-| E2E-05 | 报表 API 返回与 seed 一致聚合数字 |
+> 账号与 ID 固定值见 `05-seed-fixtures.md` §6
+
+| 场景 ID | 描述 | 关键断言 |
+| --- | --- | --- |
+| E2E-01 | admin_info 登录 → 创建资产 → 列表可见 | code=0, list 含新 asset_no |
+| E2E-02 | student_001 领用 501 → admin_info 院审 → admin_school 校审 | asset 501 status=2, user_id=10003 |
+| E2E-03 | 创建盘点 task → 10003/10004 抢锁 → archive → 查 diff | conflicts 非空; diff_status 有数据 |
+| E2E-04 | 禁用 student_001 → 旧 token 访问 /me | 40102 |
+| E2E-05 | GET /report/assets/by-dept | dept 15 total_count >= 3 |
+
+**E2E 启动顺序**（写入 README）：
+
+```bash
+make infra-up
+# 终端1-5 分别 go run 各 api/rpc/worker
+make run-all   # 或 scripts/run-dev.sh
+go test ./tests/e2e/... -tags=e2e -v
+```
 
 ### P9.2 CI 流水线（`.github/workflows/backend-ci.yml`）
 
@@ -1019,9 +1059,10 @@ flowchart TD
 1. **不要一次完成多个 Phase**：严格按依赖顺序，合并后再开下一分支。
 2. **不要省略 `-tags=integration`**：集成测试是 Phase 验收门槛。
 3. **遇到设计缺口**：先更新 `01-desgin.md` 相应章节，再实现代码，并在 PR 中注明「设计同步更新」。
-4. **错误码冲突**：新增前 grep `pkg/errx/codes.go`，避免重复 code。
+4. **错误码**：以 `06-error-codes.md` 为准，实现于 `pkg/errx/codes.go`。
 5. **MongoDB/Redis/Kafka 不可用时**：业务 API 返回 50301，并打 structured log（含 trace_id）。
 6. **密码与密钥**：仅使用 `docker-compose-env.example.yml` 中的占位值，禁止提交真实凭据。
+7. **契约优先**：各 Phase 的 handler 字段名必须与 `03-api-contract.md` 一致（camelCase JSON）。
 
 ## 附录 C：建议执行时间线（参考）
 
@@ -1042,4 +1083,4 @@ flowchart TD
 
 ---
 
-*文档版本：v1.0 | 与 `01-desgin.md` 同步 | 最后更新：2026-07-06*
+*文档版本：v1.1 | 与 `01-desgin.md` 及 doc/03–07 同步 | 最后更新：2026-07-07*

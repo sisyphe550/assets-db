@@ -60,7 +60,8 @@
 
 ### 3.1 用户与权限微服务（User Service）
 
-* **功能职责**：负责系统用户登录、注册、个人信息管理；维护独立的树状组织架构（学院/部门/实验室）；管理三级角色的级别设定与动态鉴权。
+* **功能职责**：负责系统用户登录、个人信息管理；维护独立的树状组织架构（学院/部门/实验室）；管理三级角色的级别设定与动态鉴权。
+* **用户创建策略**：**不开放自助注册**。新用户仅由校级管理员（role=1）或学院管理员（role=2，仅限本学院子树）通过管理 API 创建；详见 `03-api-contract.md` §2.6。
 * **架构设计**：
 * `user-api`：暴露对外的登录及鉴权接口，校验成功后发放内含用户唯一标识（UID）、角色级别（RoleLevel）及所属组织ID（DeptID）的强加密 JWT Token。
 * `user-rpc`：向其他兄弟微服务提供底层的分布式用户/组织架构元数据查询接口。
@@ -80,8 +81,8 @@
 
 * **功能职责**：承载核心业务的流转协同审批，涵盖资产领用、归还、故障报修工单流转、资产报废两级审核等全流程。
 * **架构设计**：
-* `workflow-api`：接收师生提交的申请、管理员的审核指令（同意/驳回/转办）。
-* `workflow-rpc`：推进流转状态机，负责校验多级审批人权限（学院初审 $\rightarrow$ 校级复审），并在节点终审通过时，负责向审计链路写入不可篡改的流水痕迹。
+* `workflow-api`：接收师生提交的申请、管理员的审核指令（同意/驳回）。**v1 不实现转办**（见 §7.11）。
+* `workflow-rpc`：推进流转状态机，负责校验多级审批人权限（学院初审 $\rightarrow$ 校级复审），并在节点终审通过时，负责向审计链路写入不可篡改的流水痕迹。四种工单类型的前置校验与事件映射详见 `04-workflow-rules.md`。
 
 
 
@@ -125,6 +126,15 @@
 
 
 * **Redis (7.2)**：用于存储全系统的分布式用户 Session Token、JWT 撤销黑名单、协同流转状态缓存以及多人盘点时针对单台资产的分布式锁，防止并发覆盖。
+
+**开发环境数据库命名约定**（单实例、逻辑隔离，生产可拆库）：
+
+| 实例 | 库名 | 归属服务 |
+| --- | --- | --- |
+| PostgreSQL | `fams_core` | User / Workflow / Inventory 全部 PG 表 |
+| PostgreSQL | `fams_report` | Report 物化宽表、导出任务 |
+| MySQL | `fams_asset` | Asset 台账与事件去重 |
+| MongoDB | `fams_inventory` | 盘点草稿 |
 
 ### 4.2 核心数据表/集合设计（SQL & NoSQL 模式）
 
@@ -170,7 +180,11 @@
 | location | varchar(100) | Not Null | 物理存放地点 |
 | department_id | bigint | Not Null | 归属学院/部门 ID（数据隔离维度） |
 | user_id | bigint | Null | 当前领用人/实际使用人用户 ID |
-| status | tinyint | Not Null | 状态：1-在库, 2-领用中, 3-维修中, 4-已报废 |
+| is_shared | tinyint | Not Null, Default 0 | 是否学院内共享可见：0-否, 1-是（供师生只读 API 过滤） |
+| status | tinyint | Not Null | 业务状态：1-在库, 2-领用中, 3-维修中, 4-已报废 |
+| deleted_at | datetime | Null | 逻辑删除时间；非 NULL 表示已删除，列表默认过滤 |
+
+> **逻辑删除**：DELETE 接口仅写 `deleted_at=now()`，**不修改** `status` 枚举值；查询默认 `WHERE deleted_at IS NULL`。
 
 #### 4.2.4 审批申请主表（`workflow_request` - 存储于 PostgreSQL）
 
@@ -186,8 +200,12 @@
 | current_stage | smallint | Not Null | 当前审批阶段：1-院级初审, 2-校级复审, 3-归档结束 |
 | status | smallint | Not Null | 流程状态：1-审批中, 2-审批通过, 3-已被驳回 |
 | reason | varchar(255) | Null | 申请缘由说明或故障描述 |
+| created_at | timestamptz | Not Null | 工单创建时间 |
+| updated_at | timestamptz | Not Null | 最后状态变更时间 |
 
-> **防重复申请约束**：对该表建立部分唯一索引 `CREATE UNIQUE INDEX uk_asset_open_request ON workflow_request (asset_id) WHERE status = 1;`，从数据库层面保证同一资产在任意时刻至多存在一张“审批中”的工单，杜绝并发重复领用。
+> **防重复申请约束**：对该表建立部分唯一索引 `CREATE UNIQUE INDEX uk_asset_open_request ON workflow_request (asset_id) WHERE status = 1;`，从数据库层面保证同一资产在任意时刻至多存在一张“审批中”的工单。
+>
+> **驳回后再申请**：驳回后 `status=3`，不在部分唯一索引范围内，**允许**用户立即对同一资产重新提交新工单。
 
 #### 4.2.5 审批留痕流水表（`workflow_log` - 存储于 PostgreSQL）
 
@@ -264,10 +282,78 @@
 | event_type | varchar(50) | Not Null | 领域事件类型（如 ASSET_USE_APPROVED） |
 | partition_key | varchar(50) | Not Null | Kafka 分区键（取 `asset_id`，保证同一资产事件严格有序） |
 | payload | jsonb | Not Null | 完整事件报文 |
-| status | smallint | Not Null, Default 0 | 投递状态：0-待投递, 1-已投递 |
-| retry_count | int | Not Null, Default 0 | 已重试次数 |
+| status | smallint | Not Null, Default 0 | 投递状态：0-待投递, 1-已投递, 2-投递失败（死信，需人工介入） |
+| retry_count | int | Not Null, Default 0 | 已重试次数（上限 10，超限置 status=2） |
 | created_at | timestamptz | Not Null | 事件产生时间 |
 | sent_at | timestamptz | Null | 实际投递成功时间 |
+
+#### 4.2.10 盘点任务指派表（`inventory_task_assignee` - 存储于 PostgreSQL）
+
+记录院级管理员指派的具体协同盘点人员，仅被指派者可在该任务下提交草稿。
+
+| 字段名 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| id | bigint | PK | 自增 ID |
+| task_id | bigint | Not Null | 关联盘点任务 ID |
+| user_id | bigint | Not Null | 被指派盘点人员用户 ID |
+| assigned_by | bigint | Not Null | 指派人（管理员）用户 ID |
+| assigned_at | timestamptz | Not Null | 指派时间 |
+
+> **唯一性约束**：`CREATE UNIQUE INDEX uk_task_user ON inventory_task_assignee (task_id, user_id);`
+
+#### 4.2.11 报表聚合宽表（存储于 PostgreSQL 独立库 `fams_report`）
+
+Report Service 专用库，由 Kafka 事件消费者增量写入，禁止业务服务直连写入。
+
+**`rpt_asset_daily_snapshot`**（按日按部门快照）：
+
+| 字段名 | 类型 | 说明 |
+| --- | --- | --- |
+| id | bigint | PK |
+| snapshot_date | date | 快照日期 |
+| department_id | bigint | 部门 ID |
+| total_count | int | 资产总数 |
+| in_stock_count | int | 在库数 |
+| in_use_count | int | 领用中数 |
+| repair_count | int | 维修中数 |
+| scrap_count | int | 已报废数 |
+| total_value | decimal(14,2) | 资产总价值 |
+
+**`rpt_workflow_summary`**（按日按类型汇总）：
+
+| 字段名 | 类型 | 说明 |
+| --- | --- | --- |
+| id | bigint | PK |
+| summary_date | date | 汇总日期 |
+| request_type | smallint | 1-领用, 2-归还, 3-报修, 4-报废 |
+| approved_count | int | 当日审批通过数 |
+| rejected_count | int | 当日驳回数 |
+| pending_count | int | 当前积压数（Gauge 同步） |
+
+**`rpt_inventory_diff_summary`**（按任务汇总）：
+
+| 字段名 | 类型 | 说明 |
+| --- | --- | --- |
+| id | bigint | PK |
+| task_id | bigint | 盘点任务 ID |
+| match_count | int | 账实相符数 |
+| surplus_count | int | 盘盈数 |
+| loss_count | int | 盘亏数 |
+| updated_at | timestamptz | 最后更新时间 |
+
+#### 4.2.12 报表导出任务表（`rpt_export_job` - 存储于 PostgreSQL `fams_report`）
+
+| 字段名 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| id | bigint | PK | 导出任务 ID（即 API 返回的 jobId） |
+| creator_id | bigint | Not Null | 发起人用户 ID |
+| export_type | varchar(50) | Not Null | 导出类型：asset_list / inventory_diff / workflow_log |
+| params | jsonb | Not Null | 导出参数（筛选条件快照） |
+| status | smallint | Not Null | 0-排队, 1-处理中, 2-已完成, 3-失败 |
+| file_path | varchar(255) | Null | 生成文件相对路径（CSV） |
+| error_message | varchar(255) | Null | 失败原因 |
+| created_at | timestamptz | Not Null | 创建时间 |
+| finished_at | timestamptz | Null | 完成时间 |
 
 ---
 
@@ -534,7 +620,7 @@ assets-db/backend/
 }
 ```
 
-**核心错误码段（节选，完整表由 `pkg/errx` 维护）**：
+**核心错误码段（节选，完整矩阵见 `06-error-codes.md`）**：
 
 | code | HTTP | 含义 | 典型触发场景 |
 | --- | --- | --- | --- |
@@ -598,3 +684,53 @@ assets-db/backend/
 | report-api | 9109 |
 
 各 API 业务端口（HTTP）约定：user-api `8888`、asset-api `8889`、workflow-api `8890`、inventory-api `8891`、report-api `8892`。
+
+### 7.8 各服务 gRPC 端口分配
+
+| 服务 | gRPC Port | etcd Key 前缀 |
+| --- | --- | --- |
+| user-rpc | 8081 | `user.rpc` |
+| asset-rpc | 8082 | `asset.rpc` |
+| workflow-rpc | 8083 | `workflow.rpc` |
+| inventory-rpc | 8084 | `inventory.rpc` |
+
+Report Service 无对外 RPC，仅 HTTP API。
+
+### 7.9 Go Workspace 与模块约定
+
+根目录使用 **单模块** `module github.com/fams/backend`（或仓库实际 path），`go.mod` 位于 `assets-db/backend/`。各微服务代码置于 `service/<name>/`，公共库置于 `pkg/`，**不使用** go.work 多模块（降低 AI 与 CI 复杂度）。
+
+go-zero 代码生成约定：
+
+```bash
+# API 生成
+goctl api go -api service/user/api/user.api -dir service/user/api -style goZero
+
+# RPC 生成
+goctl rpc protoc service/user/rpc/user.proto --go_out=service/user/rpc --go-grpc_out=service/user/rpc --zrpc_out=service/user/rpc -style goZero
+```
+
+### 7.10 SSO 与 Token 续期约定
+
+| 场景 | 行为 |
+| --- | --- |
+| 同一 uid 新登录 | 覆盖 Redis `fams:auth:token:${uid}`，旧 Access Token 的 `jti` **不**自动黑名单（自然过期）；若需强制踢人，管理员调用 disable/force-logout |
+| Refresh Token | 一次性轮换：刷新成功后签发新 Refresh，旧 Refresh 的 `jti` 写入黑名单 |
+| Refresh 重复使用 | 40102（疑似盗用） |
+| force-logout API | 将该 uid 当前 Redis session 中的 jti 黑名单 + DEL session key |
+
+### 7.11 转办（Transfer）v1 范围决策
+
+**v1 不实现** `POST /workflow/requests/:id/transfer`。审批仅支持同意/驳回；转办留作 v1.1，避免状态机膨胀。任务书 P4 中该接口标记为 **Out of Scope**。
+
+### 7.12 文档索引
+
+| 文档 | 用途 |
+| --- | --- |
+| `01-desgin.md` | 架构、数据模型、核心流程、工程规范 |
+| `02-plan.md` | 分 Phase 开发任务书（Git/测试/DoD） |
+| `03-api-contract.md` | 全部 HTTP API Request/Response 契约 |
+| `04-workflow-rules.md` | 四种工单状态机与前置校验 |
+| `05-seed-fixtures.md` | 固定 Seed ID/账号（E2E 断言） |
+| `06-error-codes.md` | 按接口列出的完整错误码矩阵 |
+| `07-inventory-ops.md` | 盘点 scope/归档/比对逐步算法 |
