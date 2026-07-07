@@ -1,0 +1,37 @@
+Name: user-api
+Host: 0.0.0.0
+Port: 8888
+
+Log:
+  ServiceName: user-api
+  Mode: console
+  Level: info
+
+JWT:
+  AccessSecret: dev_access_secret_change_me_in_prod
+  AccessExpire: 7200
+
+RefreshJWT:
+  RefreshSecret: dev_refresh_secret_change_me_in_prod
+  RefreshExpire: 86400
+
+Redis:
+  Host: localhost:6379
+  Type: node
+
+UserRPC:
+  Etcd:
+    Hosts:
+      - localhost:2379
+    Key: user.rpc
+
+Telemetry:
+  Name: user-api
+  Endpoint: localhost:4317
+  Sampler: 1.0
+  Batcher: otlpgrpc
+
+Prometheus:
+  Host: 0.0.0.0
+  Port: 9101
+  Path: /metrics
