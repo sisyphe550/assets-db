@@ -62,10 +62,14 @@ func (h *AssetHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	// 部门隔离
 	subIDs, unlimited := middleware.GetDeptSubtree(r.Context())
+	roleLevel, _ := middleware.GetRoleLevel(r.Context())
+	// role=1 校管全量可见，或 dept scope middleware 设置了 unlimited
+	if roleLevel == 1 {
+		unlimited = true
+	}
 	var deptIDs []int64
 	if !unlimited {
 		deptIDs = subIDs
-		// 如果子树为空，返回空列表
 		if len(deptIDs) == 0 {
 			writeOK(w, map[string]any{"list": []any{}, "page": page, "pageSize": pageSize, "total": 0})
 			return

@@ -12,26 +12,26 @@ import (
 
 // WorkflowRequest 审批工单
 type WorkflowRequest struct {
-	ID           int64     `db:"id"`
-	AssetID      int64     `db:"asset_id"`
-	RequesterID  int64     `db:"requester_id"`
-	DepartmentID int64     `db:"department_id"`
-	Type         int16     `db:"type"`
-	CurrentStage int16     `db:"current_stage"`
-	Status       int16     `db:"status"`
-	Reason       string    `db:"reason"`
-	CreatedAt    time.Time `db:"created_at"`
-	UpdatedAt    time.Time `db:"updated_at"`
+	ID           int64     `db:"id" json:"id"`
+	AssetID      int64     `db:"asset_id" json:"assetId"`
+	RequesterID  int64     `db:"requester_id" json:"requesterId"`
+	DepartmentID int64     `db:"department_id" json:"departmentId"`
+	Type         int16     `db:"type" json:"type"`
+	CurrentStage int16     `db:"current_stage" json:"currentStage"`
+	Status       int16     `db:"status" json:"status"`
+	Reason       string    `db:"reason" json:"reason"`
+	CreatedAt    time.Time `db:"created_at" json:"createdAt"`
+	UpdatedAt    time.Time `db:"updated_at" json:"updatedAt"`
 }
 
 // WorkflowLog 审批留痕
 type WorkflowLog struct {
-	ID          int64     `db:"id"`
-	RequestID   int64     `db:"request_id"`
-	OperatorID  int64     `db:"operator_id"`
-	Action      string    `db:"action"`
-	Comment     string    `db:"comment"`
-	OperateTime time.Time `db:"operate_time"`
+	ID          int64     `db:"id" json:"id"`
+	RequestID   int64     `db:"request_id" json:"requestId"`
+	OperatorID  int64     `db:"operator_id" json:"operatorId"`
+	Action      string    `db:"action" json:"action"`
+	Comment     string    `db:"comment" json:"comment"`
+	OperateTime time.Time `db:"operate_time" json:"operateTime"`
 }
 
 // OutboxEvent 发件箱事件

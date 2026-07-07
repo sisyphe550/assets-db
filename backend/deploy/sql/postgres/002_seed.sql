@@ -18,12 +18,12 @@ ON CONFLICT (id) DO NOTHING;
 -- 2. 用户（sys_user）
 -- 密码明文：Test@123456
 -- bcrypt hash (cost=10)：
--- $2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy
+-- $2a$10$BuwmRTR/mblICvn4jrLA0.9LVPRTEMdlQZBa7rMnttf6mieWX9pre
 -- ==============================
 INSERT INTO sys_user (id, username, password_hash, real_name, role_level, department_id, status) VALUES
-    (10001, 'admin_school', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '张校管', 1, 1,   1),
-    (10002, 'admin_info',   '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '王院管', 2, 15,  1),
-    (10003, 'student_001',  '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '李同学', 3, 103, 1),
-    (10004, 'student_002',  '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '赵同学', 3, 104, 1),
-    (10005, 'student_me',   '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', '周同学', 3, 20,  1)
+    (10001, 'admin_school', '$2a$10$BuwmRTR/mblICvn4jrLA0.9LVPRTEMdlQZBa7rMnttf6mieWX9pre', '张校管', 1, 1,   1),
+    (10002, 'admin_info',   '$2a$10$BuwmRTR/mblICvn4jrLA0.9LVPRTEMdlQZBa7rMnttf6mieWX9pre', '王院管', 2, 15,  1),
+    (10003, 'student_001',  '$2a$10$BuwmRTR/mblICvn4jrLA0.9LVPRTEMdlQZBa7rMnttf6mieWX9pre', '李同学', 3, 103, 1),
+    (10004, 'student_002',  '$2a$10$BuwmRTR/mblICvn4jrLA0.9LVPRTEMdlQZBa7rMnttf6mieWX9pre', '赵同学', 3, 104, 1),
+    (10005, 'student_me',   '$2a$10$BuwmRTR/mblICvn4jrLA0.9LVPRTEMdlQZBa7rMnttf6mieWX9pre', '周同学', 3, 20,  1)
 ON CONFLICT (id) DO NOTHING;

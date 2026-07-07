@@ -4,7 +4,7 @@
 > bcrypt hash（cost=10，**固定使用此值写入 seed SQL**）：
 
 ```
-$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy
+$2a$10$BuwmRTR/mblICvn4jrLA0.9LVPRTEMdlQZBa7rMnttf6mieWX9pre
 ```
 
 ---

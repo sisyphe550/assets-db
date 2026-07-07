@@ -180,10 +180,12 @@ func (h *UserHandler) DeptTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 按角色裁剪
+	// 按角色裁剪与确定树根
 	var filtered []model.SysDepartment
+	var nodes []*dept.TreeNode
 	if roleLevel == 1 {
 		filtered = all
+		nodes = dept.ToTree(model.ToDeptFullSlice(filtered), 0)
 	} else {
 		ids, _ := dept.SubtreeIDs(model.ToDeptSlice(all), deptID)
 		idSet := make(map[int64]bool)
@@ -195,9 +197,19 @@ func (h *UserHandler) DeptTree(w http.ResponseWriter, r *http.Request) {
 				filtered = append(filtered, d)
 			}
 		}
+		// 以管理员所在部门为根构建树
+		children := dept.ToTree(model.ToDeptFullSlice(filtered), deptID)
+		// 查找管理员部门信息作为根节点
+		for _, d := range filtered {
+			if d.ID == deptID {
+				nodes = []*dept.TreeNode{{
+					ID: d.ID, ParentID: d.ParentID, DeptName: d.DeptName,
+					DeptCode: d.DeptCode, Path: d.Path, Children: children,
+				}}
+				break
+			}
+		}
 	}
-
-	nodes := dept.ToTree(model.ToDeptFullSlice(filtered), 0)
 	if nodes == nil {
 		nodes = []*dept.TreeNode{}
 	}
