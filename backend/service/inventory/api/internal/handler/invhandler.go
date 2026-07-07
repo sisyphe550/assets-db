@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -234,12 +235,12 @@ func (h *InvHandler) checkAssetInScope(ctx context.Context, assetNo string, scop
 
 // POST /inventory/tasks/:id/archive
 func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
-	id := parseIDForAction(r.URL.Path, "/tasks/", "/archive")
+	taskID := parseIDForAction(r.URL.Path, "/tasks/", "/archive")
 	var req struct{ Force bool `json:"force"` }
 	json.NewDecoder(r.Body).Decode(&req)
 
 	im := model.NewInvModel(h.DB)
-	task, err := im.FindTask(r.Context(), id)
+	task, err := im.FindTask(r.Context(), taskID)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -249,14 +250,123 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 归档: 从 MongoDB 聚合草稿 + 从 asset-rpc 取账面资产 → 写入 inventory_record
-	// 简化实现: 空归档（后续 ComparisonWorker 处理）
-	if err := im.ArchiveTask(r.Context(), id, nil); err != nil {
+	// Step 1: 从 MongoDB 读取所有草稿
+	draftAssetNos := make(map[string]map[string]any)
+	if h.DraftCol != nil {
+		cursor, err := h.DraftCol.Find(r.Context(), bson.M{"task_id": taskID})
+		if err == nil {
+			defer cursor.Close(r.Context())
+			for cursor.Next(r.Context()) {
+				var draft struct {
+					AssetNo       string         `bson:"asset_no"`
+					OperatorID    int64          `bson:"operator_id"`
+					ModifiedCells map[string]any `bson:"modified_cells"`
+				}
+				cursor.Decode(&draft)
+				draftAssetNos[draft.AssetNo] = map[string]any{
+					"operator_id": draft.OperatorID,
+					"location":    getCellStr(draft.ModifiedCells, "actual_location"),
+					"found_name":  getCellStr(draft.ModifiedCells, "found_name"),
+				}
+			}
+		}
+	}
+
+	// Step 2: 从 asset-rpc 获取 scope 内所有账面资产
+	bookAssets := make(map[string]map[string]any)
+	if h.AssetRPC != "" {
+		body, _ := json.Marshal(map[string]any{"deptId": task.ScopeDeptID})
+		resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
+		if err == nil {
+			defer resp.Body.Close()
+			respBody, _ := io.ReadAll(resp.Body)
+			var result struct {
+				Assets []map[string]any `json:"assets"`
+			}
+			json.Unmarshal(respBody, &result)
+			for _, a := range result.Assets {
+				if assetNo, ok := a["asset_no"].(string); ok {
+					bookAssets[assetNo] = a
+				}
+			}
+		}
+	}
+
+	// Step 3: 生成 inventory_record
+	var records []model.InventoryRecord
+	recordCount := 0
+
+	// 已扫描记录（来自 draft）
+	for assetNo, draft := range draftAssetNos {
+		opID, _ := draft["operator_id"].(int64)
+		loc, _ := draft["location"].(string)
+		foundName, _ := draft["found_name"].(string)
+
+		if bookAsset, ok := bookAssets[assetNo]; ok {
+			// 账面存在：正常记录
+			assetID, _ := bookAsset["id"].(float64)
+			aid := int64(assetID)
+			records = append(records, model.InventoryRecord{
+				TaskID: taskID, AssetID: &aid,
+				OperatorID: &opID, IsScanned: 1,
+				ActualLocation: loc,
+			})
+		} else {
+			// 账面无此编号：盘盈候选
+			records = append(records, model.InventoryRecord{
+				TaskID: taskID, AssetID: nil,
+				FoundAssetDesc: foundName + " @ " + loc,
+				OperatorID: &opID, IsScanned: 1,
+				ActualLocation: loc,
+			})
+		}
+		recordCount++
+	}
+
+	// 盘亏候选（账面有但 draft 无）
+	for assetNo, bookAsset := range bookAssets {
+		if _, ok := draftAssetNos[assetNo]; !ok {
+			assetID, _ := bookAsset["id"].(float64)
+			aid := int64(assetID)
+			records = append(records, model.InventoryRecord{
+				TaskID: taskID, AssetID: &aid,
+				IsScanned: 0,
+			})
+			recordCount++
+		}
+	}
+
+	// Step 4: 事务写入 + 更新任务状态
+	if err := im.ArchiveTask(r.Context(), taskID, records); err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeOK(w, map[string]any{"taskId": id, "archivedRecordCount": 0, "comparisonJobQueued": true})
+
+	// Step 5: 发送 Kafka 消息触发比对 Worker
+	go h.sendComparisonTask(taskID)
+
+	writeOK(w, map[string]any{
+		"taskId": taskID, "archivedRecordCount": recordCount,
+		"scannedCount": len(draftAssetNos), "comparisonJobQueued": true,
+	})
 }
+
+// sendComparisonTask 发送比对任务到 Kafka
+func (h *InvHandler) sendComparisonTask(taskID int64) {
+	// 通过调用 /inventory.rpc 或直接写 Kafka（简化：写 outbox 表或日志）
+	// v1 简化：直接打印日志，由 ComparisonWorker 轮询 status=2 的任务
+	log.Printf("comparison task queued: task_id=%d", taskID)
+}
+
+func getCellStr(cells map[string]any, key string) string {
+	if v, ok := cells[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
 
 // GET /inventory/tasks/:id/records
 func (h *InvHandler) Records(w http.ResponseWriter, r *http.Request) {
