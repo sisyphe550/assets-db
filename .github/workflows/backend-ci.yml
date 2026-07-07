@@ -1,0 +1,43 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fams
+          POSTGRES_PASSWORD: fams_dev_pass
+          POSTGRES_DB: fams_core
+        ports: ["5432:5432"]
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: fams_root_pass
+          MYSQL_DATABASE: fams_asset
+          MYSQL_USER: fams
+          MYSQL_PASSWORD: fams_dev_pass
+        ports: ["3306:3306"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: backend/go.sum
+
+      - name: Unit Tests
+        working-directory: backend
+        run: go test ./pkg/... ./service/... -short -v -cover
+
+      - name: Vet
+        working-directory: backend
+        run: go vet ./...
