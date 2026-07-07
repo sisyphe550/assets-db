@@ -1,21 +1,24 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/sisyphus550/assets-db/backend/pkg/middleware"
 	"github.com/sisyphus550/assets-db/backend/service/user/api/internal/handler"
 )
 
 func main() {
-	// 配置（生产环境应从配置文件加载）
 	dsn := getEnv("POSTGRES_DSN", "postgres://fams:fams_dev_pass@localhost:5432/fams_core?sslmode=disable")
+	redisAddr := getEnv("REDIS_ADDR", "localhost:6379")
 	accessSecret := getEnv("JWT_ACCESS_SECRET", "dev_access_secret_change_me_in_prod")
 	refreshSecret := getEnv("JWT_REFRESH_SECRET", "dev_refresh_secret_change_me_in_prod")
 
@@ -25,7 +28,15 @@ func main() {
 	}
 	defer db.Close()
 
-	h := handler.NewUserHandler(db, accessSecret, refreshSecret, 2*time.Hour, 24*time.Hour)
+	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
+	if err := rdb.Ping(context.Background()).Err(); err != nil {
+		log.Printf("WARNING: Redis not available at %s, blacklist disabled: %v", redisAddr, err)
+		rdb = nil
+	} else {
+		log.Printf("Redis connected: %s", redisAddr)
+	}
+
+	h := handler.NewUserHandler(db, rdb, accessSecret, refreshSecret, 2*time.Hour, 24*time.Hour)
 
 	mux := http.NewServeMux()
 
@@ -33,7 +44,7 @@ func main() {
 	mux.HandleFunc("/api/v1/user/login", h.Login)
 	mux.HandleFunc("/api/v1/user/refresh", h.Refresh)
 
-	// 需要鉴权
+	// 需要鉴权（含黑名单检查）
 	authMux := http.NewServeMux()
 	authMux.HandleFunc("/api/v1/user/logout", h.Logout)
 	authMux.HandleFunc("/api/v1/user/me", h.Me)
@@ -50,11 +61,12 @@ func main() {
 		}
 	})
 
-	authHandler := middleware.JWTAuth(accessSecret, nil)(authMux)
+	// JWT 中间件带 Redis 黑名单
+	authHandler := middleware.JWTAuth(accessSecret, rdb)(authMux)
 	mux.Handle("/api/v1/user/", authHandler)
 
 	addr := ":" + getEnv("PORT", "8888")
-	log.Printf("user-api listening on %s", addr)
+	log.Printf("user-api listening on %s (redis=%v)", addr, rdb != nil)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)
 	}
@@ -65,8 +77,9 @@ func hasSuffix(path, suffix string) bool {
 }
 
 func getEnv(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
+	if v := os.Getenv(key); v != "" { return v }
 	return def
 }
+
+// 避免未使用 import
+var _ = strings.TrimSpace

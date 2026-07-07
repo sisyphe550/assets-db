@@ -1,8 +1,7 @@
 syntax = "proto3";
 
 package user;
-
-option go_package = "./user";
+option go_package = "github.com/sisyphus550/assets-db/backend/service/user/rpc/userpb";
 
 service User {
   rpc FindUser(FindUserReq) returns (FindUserResp);

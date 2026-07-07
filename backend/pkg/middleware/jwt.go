@@ -186,6 +186,12 @@ func GetDeptID(ctx context.Context) (int64, bool) {
 	return v, ok
 }
 
+// GetJti 从 context 取 JWT Token ID
+func GetJti(ctx context.Context) (string, bool) {
+	v, ok := ctx.Value(JtiKey).(string)
+	return v, ok
+}
+
 // ==========================================
 // 工具函数
 // ==========================================
