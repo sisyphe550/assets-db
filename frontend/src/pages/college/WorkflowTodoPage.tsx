@@ -1,5 +1,12 @@
-import PlaceholderPage from '@/pages/PlaceholderPage';
+import WorkflowTable from '@/components/workflow/WorkflowTable';
 
 export default function WorkflowTodoPage() {
-  return <PlaceholderPage title="工单审批" phase="P4" />;
+  return (
+    <WorkflowTable
+      scope="todo"
+      title="待审批工单"
+      assetBasePath="/college"
+      emptyDescription="暂无待审批工单"
+    />
+  );
 }

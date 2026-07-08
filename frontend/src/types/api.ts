@@ -67,3 +67,49 @@ export interface DeptTreeNode {
   path: string;
   children: DeptTreeNode[] | null;
 }
+
+export interface WorkflowRequest {
+  id: number;
+  assetId: number;
+  requesterId: number;
+  departmentId: number;
+  type: 1 | 2 | 3 | 4;
+  currentStage: 1 | 2 | 3;
+  status: 1 | 2 | 3;
+  reason: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkflowLog {
+  id: number;
+  requestId: number;
+  operatorId: number;
+  action: string;
+  comment: string;
+  operateTime: string;
+}
+
+export interface WorkflowDetail {
+  request: WorkflowRequest;
+  logs: WorkflowLog[];
+}
+
+export interface CreateWorkflowReq {
+  assetId: number;
+  type: 1 | 2 | 3 | 4;
+  reason: string;
+}
+
+export interface WorkflowListParams {
+  page?: number;
+  pageSize?: number;
+  scope?: 'my' | 'todo' | 'done' | 'all';
+  type?: number;
+  status?: number;
+  assetId?: number;
+}
+
+export interface ApproveWorkflowReq {
+  comment?: string;
+}

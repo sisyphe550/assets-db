@@ -4,6 +4,7 @@ import uiReducer from './slices/uiSlice';
 import { authApi } from './api/authApi';
 import { assetApi } from './api/assetApi';
 import { userApi } from './api/userApi';
+import { workflowApi } from './api/workflowApi';
 
 export const store = configureStore({
   reducer: {
@@ -12,9 +13,15 @@ export const store = configureStore({
     [authApi.reducerPath]: authApi.reducer,
     [assetApi.reducerPath]: assetApi.reducer,
     [userApi.reducerPath]: userApi.reducer,
+    [workflowApi.reducerPath]: workflowApi.reducer,
   },
   middleware: (getDefault) =>
-    getDefault().concat(authApi.middleware, assetApi.middleware, userApi.middleware),
+    getDefault().concat(
+      authApi.middleware,
+      assetApi.middleware,
+      userApi.middleware,
+      workflowApi.middleware,
+    ),
 });
 
 export type RootState = ReturnType<typeof store.getState>;
