@@ -9,9 +9,11 @@ frontend/
 ├── doc/
 │   ├── 01-design.md              # 技术选型、UI 规范、状态管理、路由设计、类型定义
 │   ├── 02-directory.md           # 本文档：目录结构详细说明
-│   ├── 03-pages.md               # 页面级详细设计
+│   ├── 03-pages.md               # 页面级详细设计（21 个页面）
 │   ├── 04-backend-api.md         # 后端 API 参考（鉴权/端点/错误码/业务规则）
-│   └── 05-components.md          # 组件规格（Props/loading-empty-error/表单校验）
+│   ├── 05-components.md          # 组件规格（Props/loading-empty-error/表单校验）
+│   ├── 06-visual-design.md       # 美术设计规范（Design Tokens/线框图/图标）
+│   └── 07-implementation.md      # AI 开发蓝图（依赖/配置/路由/Store/API）
 │
 ├── public/
 │   └── favicon.ico
@@ -56,7 +58,8 @@ frontend/
     │   ├── asset/                #  资产相关
     │   │   ├── AssetTable.tsx   #    资产列表表格（ProTable）
     │   │   ├── AssetForm.tsx    #    资产新增/编辑表单
-    │   │   └── AssetDetail.tsx  #    资产详情展示
+    │   │   ├── AssetDetail.tsx  #    资产详情展示
+    │   │   └── AssetPickerModal.tsx # 资产选择弹窗（工单创建用）
     │   │
     │   ├── workflow/             #  工单相关
     │   │   ├── WorkflowTable.tsx #   工单列表表格
@@ -72,11 +75,18 @@ frontend/
     │   ├── department/           #  组织架构
     │   │   └── DeptTreeSelect.tsx#   部门树选择器
     │   │
+    │   ├── user/                 #  用户管理
+    │   │   └── CreateUserModal.tsx #  创建用户弹窗
+    │   │
     │   ├── report/               #  报表
     │   │   ├── StatCard.tsx     #    统计卡片
-    │   │   └── DiffSummary.tsx  #    盘点差异汇总
+    │   │   ├── DiffSummary.tsx  #    盘点差异汇总
+    │   │   ├── ReportCharts.tsx #    报表图表组
+    │   │   └── ExportModal.tsx  #    导出进度弹窗
     │   │
     │   └── common/               #  通用组件
+    │       ├── TopHeader.tsx    #    顶栏
+    │       ├── SidebarMenu.tsx  #    侧边栏菜单
     │       ├── PageHeader.tsx   #    页面标题 + 面包屑
     │       ├── StatusTag.tsx    #    状态标签（资产/工单/盘点）
     │       └── ErrorBoundary.tsx#    错误边界
@@ -115,12 +125,21 @@ frontend/
     │       ├── WorkflowCreatePage.tsx
     │       └── InventorySubmitPage.tsx
     │
+    │   └── NotFoundPage.tsx      #   404 页面（pages 根级）
+    │
+    ├── config/                    # ──────── 配置 ────────
+    │   └── menu.ts               #   三角色侧边栏菜单定义
+    │
+    ├── styles/                    # ──────── 样式 ────────
+    │   └── tokens.ts             #   Design Tokens（色彩/间距）
+    │
     ├── hooks/                     # ──────── 自定义 Hooks ────────
     │   ├── useAuth.ts            #   登录/登出/刷新 token 逻辑
     │   └── usePermission.ts      #   便捷权限判断
     │
     ├── utils/                     # ──────── 工具 ────────
     │   ├── constants.ts          #   枚举映射（status/type/role → 中文 + 颜色）
+    │   ├── format.ts             #   日期/价格格式化
     │   └── storage.ts            #   localStorage 封装（token 存取）
     │
     └── types/                     # ──────── 类型 ────────
@@ -222,4 +241,4 @@ location /api/ {
 
 ---
 
-*文档版本：v1.0 | 2026-07-07*
+*文档版本：v1.1 | 2026-07-08*

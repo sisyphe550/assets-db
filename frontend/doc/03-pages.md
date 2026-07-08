@@ -347,4 +347,230 @@
 
 ---
 
-*文档版本：v1.0 | 2026-07-07*
+## 11. 资产详情页
+
+**路由**：`/admin/assets/:id`、`/college/assets/:id`
+
+**页面组成**：
+
+```
+┌─────────────────────────────────────────────────────┐
+│ ← 返回   资产详情                    [编辑] [删除]   │
+│                                                      │
+│  ┌─ 基本信息（Descriptions 两列）─────────────────┐ │
+│  │ 资产编号  EQUIP-2026-0001 (copyable)            │ │
+│  │ 名称      激光切割机          状态  [在库]        │ │
+│  │ 价格      ¥150,000.00        类别  设备         │ │
+│  │ 存放地点  一号实验楼101       所属部门 信息工程学院│ │
+│  │ 领用人    -                  共享   否          │ │
+│  └─────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────┘
+```
+
+**API 调用**：`useGetAssetQuery(id)`
+
+**操作按钮可见性**：
+
+| 按钮 | role=1 | role=2 | role=3 |
+|---|---|---|---|
+| 编辑 | ✅ | ✅（本院资产） | ❌ |
+| 删除 | ✅ | ✅（本院资产） | ❌ |
+
+**删除交互**：`Modal.confirm` 二次确认 → `DELETE /assets/:id` → 跳转列表页
+
+**错误处理**：
+- 40401 → `<Result status="404">` + 返回列表按钮
+- 40302 → `<Result status="403">`
+
+---
+
+## 12. 资产创建/编辑页
+
+**路由**：`/admin/assets/create`、`/admin/assets/:id/edit`（编辑路由可选，也可在详情页内嵌表单）
+
+**API 调用**：
+- 创建：`useCreateAssetMutation`
+- 编辑：`useGetAssetQuery(id)` + `useUpdateAssetMutation`
+
+**role=2 差异**：`departmentId` 字段隐藏，默认填入 `currentUser.departmentId` 的学院节点
+
+**提交后**：`message.success` → `navigate('/admin/assets')` 或 `navigate('/college/assets')`
+
+---
+
+## 13. 工单列表页
+
+**路由**：
+
+| 路由 | scope | 角色 |
+|---|---|---|
+| `/admin/workflow/todo` | todo | 校级待复审 |
+| `/admin/workflow/all` | 无（全部） | 校级 |
+| `/college/workflow/todo` | todo | 院级待初审 |
+| `/user/workflow/my` | my | 师生 |
+
+**页面组成**：ProTable + 点击行/操作列打开 WorkflowDetail Drawer
+
+**API**：`GET /workflow/requests?scope=todo|my&page=1&pageSize=20`
+
+**校级「全部工单」**：不传 scope 或 scope=all（若后端不支持则前端用 todo + done 合并展示）
+
+---
+
+## 14. 我的资产页
+
+**路由**：`/user/assets`
+
+**Tabs 结构**：
+
+| Tab | API | 说明 |
+|---|---|---|
+| 已领用 | `GET /asset/assets`（后端按 userId 过滤 status=2） | 显示领用中资产 |
+| 学院共享 | `GET /asset/assets/shared` | 只读，is_shared=1 |
+
+**快捷操作列**：
+- 领用中资产 → [申请归还] [申请报修] → 跳转 `/user/workflow/create?type=2&assetId=xxx`
+- 共享资产 → 仅 [详情]（只读）
+
+---
+
+## 15. 盘点任务列表页
+
+**路由**：`/admin/inventory/tasks`、`/college/inventory/tasks`
+
+**筛选**：状态 Select（全部/进行中/比对中/已完成）
+
+**操作列**：
+
+| 任务状态 | 操作 |
+|---|---|
+| 进行中(1) | [进入盘点] [归档] |
+| 比对中(2) | [查看]（只读） |
+| 已完成(3) | [查看差异报告] |
+
+**归档交互**：
+1. 点击 [归档] → `Modal.confirm`："确认归档？归档后盘点员将无法继续提交"
+2. `POST /tasks/:id/archive { force: false }`
+3. 成功 → 任务状态变为比对中(2)，轮询 `GET /tasks/:id/records` 直到 status=3
+
+**进度列**：`已提交 X / 应盘 Y`（Y 来自 `expectedAssetCount`，X 需前端累计或后端返回 `submittedCount`）
+
+---
+
+## 16. 盘点任务创建页
+
+**路由**：`/admin/inventory/tasks/create`、`/college/inventory/tasks/create`
+
+见 `05-components.md` §2.7 InventoryTaskForm。
+
+**创建成功后**：跳转 `/admin/inventory/tasks/:id` 或 `/college/inventory/tasks/:id`
+
+---
+
+## 17. 师生盘点录入页
+
+**路由**：`/user/inventory/:taskId`
+
+**与管理员盘点详情页的差异**：
+
+| 差异点 | 管理员 | 师生 |
+|---|---|---|
+| 归档按钮 | 显示 | 隐藏 |
+| 差异报告 | 任务完成后显示 | 不显示（仅提交） |
+| 任务选择 | 从列表进入 | 从侧边栏动态菜单进入 |
+
+**权限检查**：页面加载时验证当前用户是否在 `assigneeIds` 中，否则显示 403
+
+**侧边栏动态菜单**：UserLayout 加载时 `GET /inventory/tasks?status=1`，过滤指派给当前用户的任务，追加菜单项
+
+---
+
+## 18. 组织架构管理页
+
+**路由**：`/admin/departments`（仅 role=1）
+
+**布局**：左 40% Tree + 右 60% 详情面板（见 `06-visual-design.md` §6.12）
+
+**API**：
+- 加载：`GET /user/departments/tree`
+- 新增：`POST /user/departments { parentId, deptName, deptCode, sortOrder }`
+
+**新增子部门 Modal 字段**：
+
+| 字段 | 校验 |
+|---|---|
+| deptName | required, max: 50 |
+| deptCode | required, pattern: `/^[A-Z]{2,10}$/` |
+| sortOrder | number, min: 0, 默认 0 |
+
+**错误**：40903 dept_code 重复 → 字段级错误提示
+
+---
+
+## 19. 用户管理页
+
+**路由**：`/admin/users`（role=1）、院级管理员通过 `/college` 无此菜单
+
+> ⚠️ **后端缺口**：无 `GET /user/users` 列表/查询 API。v1 采用以下方案。
+
+**v1 交互方案**：
+
+```
+┌─────────────────────────────────────────────────────┐
+│  用户管理                            [+ 创建用户]    │
+│                                                      │
+│  ┌─ 最近创建的用户（sessionStorage 缓存）──────────┐ │
+│  │ student_001 │ 李同学 │ 普通师生 │ 软件实验室     │ │
+│  │ [启用/禁用] [强制下线]                           │ │
+│  └─────────────────────────────────────────────────┘ │
+│                                                      │
+│  ┌─ 按 ID 操作 ────────────────────────────────────┐ │
+│  │ 用户 ID: [________]  [禁用] [启用] [强制下线]   │ │
+│  └─────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────┘
+```
+
+**创建用户 Modal**：见 `05-components.md` §2.13
+
+**创建成功后**：将新用户信息追加到 sessionStorage `recent_users` 列表
+
+---
+
+## 20. 404 / 403 页面
+
+**路由**：`*`（404）、权限不足时内联展示
+
+**404 页面**（`pages/NotFoundPage.tsx`）：
+- `<Result status="404" title="页面不存在">`
+- 按钮：[返回首页]（根据 roleLevel 跳转对应 dashboard）
+
+**403 内联**（RequireAuth 或页面级）：
+- `<Result status="403" title="无权访问" subTitle="您没有权限查看此页面">`
+
+---
+
+## 21. 页面-路由-API 对照表
+
+| 页面 | 路由 | 主要 API | 文档章节 |
+|---|---|---|---|
+| 登录 | `/login` | POST login, GET me | §1 |
+| 仪表盘 | `/admin/dashboard` | report/by-dept, by-category, workflow/todo | §2 |
+| 资产列表 | `/admin/assets` | GET assets | §3 |
+| 资产详情 | `/admin/assets/:id` | GET assets/:id | §11 |
+| 资产创建 | `/admin/assets/create` | POST assets | §12 |
+| 工单详情 | Drawer | GET requests/:id, approve, reject | §4 |
+| 创建工单 | `/user/workflow/create` | POST requests | §5 |
+| 盘点详情 | `/admin/inventory/tasks/:id` | expected-assets, submit, records | §6 |
+| 统计报表 | `/admin/reports` | by-dept, by-category, diff, export | §7 |
+| 工单列表 | `/admin/workflow/todo` | GET requests | §13 |
+| 我的资产 | `/user/assets` | GET assets, GET shared | §14 |
+| 盘点列表 | `/admin/inventory/tasks` | GET tasks, archive | §15 |
+| 盘点创建 | `/admin/inventory/tasks/create` | POST tasks | §16 |
+| 师生盘点 | `/user/inventory/:taskId` | expected-assets, submit | §17 |
+| 组织架构 | `/admin/departments` | GET/POST departments | §18 |
+| 用户管理 | `/admin/users` | POST users, PUT status | §19 |
+| 404 | `*` | — | §20 |
+
+---
+
+*文档版本：v1.1 | 2026-07-08*

@@ -490,4 +490,332 @@ const workbook = univer.createWorkbook({
 
 ---
 
-*文档版本：v1.0 | 2026-07-07*
+## 5. 布局与通用组件
+
+### 5.1 TopHeader（顶栏）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/common/TopHeader.tsx` |
+| 高度 | 48px，背景 `#001529` |
+
+**Props**：
+
+```typescript
+interface TopHeaderProps {
+  collapsed: boolean;
+  onToggle: () => void;
+}
+```
+
+**内容**：折叠按钮 + Logo + 系统名 + 用户 Dropdown（退出登录）
+
+**退出流程**：`dispatch(logout())` → `POST /user/logout` → `storage.clear()` → `navigate('/login')`
+
+---
+
+### 5.2 SidebarMenu（侧边栏）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/common/SidebarMenu.tsx` |
+| 宽度 | 220px（折叠 80px） |
+
+**Props**：
+
+```typescript
+interface SidebarMenuProps {
+  items: MenuItem[];
+  collapsed: boolean;
+  extraItems?: MenuItem[];  // UserLayout 动态盘点任务
+}
+```
+
+**选中态**：`useLocation().pathname` 匹配 `item.key`（支持前缀匹配）
+
+---
+
+### 5.3 PageHeader（页面标题）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/common/PageHeader.tsx` |
+
+**Props**：
+
+```typescript
+interface PageHeaderProps {
+  title: string;
+  breadcrumb?: { title: string; path?: string }[];
+  extra?: React.ReactNode;  // 右侧操作按钮
+  onBack?: () => void;
+}
+```
+
+---
+
+### 5.4 StatusTag（状态标签）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/common/StatusTag.tsx` |
+
+**Props**：
+
+```typescript
+interface StatusTagProps {
+  type: 'asset' | 'workflow' | 'workflowStage' | 'inventory' | 'inventoryDiff' | 'role';
+  value: number;
+}
+```
+
+内部查表 `ASSET_STATUS_MAP` / `WORKFLOW_STATUS_MAP` 等，渲染 `<Tag color={...}>{label}</Tag>`
+
+---
+
+### 5.5 RequireAuth（路由守卫）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/auth/RequireAuth.tsx` |
+
+**Props**：
+
+```typescript
+interface RequireAuthProps {
+  minRole: 1 | 2 | 3;  // 1=校级路由, 2=院级路由, 3=用户路由
+  children: React.ReactNode;
+}
+```
+
+**逻辑**：
+1. 无 token → `<Navigate to="/login" />`
+2. 有 token 无 user → 调 `getMe`，loading 态 Spin
+3. `user.roleLevel > minRole` → 重定向到 `ROLE_HOME[user.roleLevel]`
+4. `user.status === 0` → 提示禁用，跳转登录
+
+---
+
+### 5.6 ErrorBoundary
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/common/ErrorBoundary.tsx` |
+
+包裹 `<Outlet />`，捕获子组件渲染错误，显示 `<Result status="error" title="页面渲染出错">`
+
+---
+
+### 5.7 StatCard（统计卡片）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/report/StatCard.tsx` |
+
+**Props**：
+
+```typescript
+interface StatCardProps {
+  title: string;
+  value: number | string;
+  prefix?: React.ReactNode;  // 图标
+  suffix?: string;
+  loading?: boolean;
+}
+```
+
+渲染：`<Card><Statistic title={title} value={value} prefix={prefix} valueStyle={{ fontSize: 32 }} /></Card>`
+
+---
+
+### 5.8 DiffSummary（盘点差异汇总）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/report/DiffSummary.tsx` |
+
+**Props**：
+
+```typescript
+interface DiffSummaryProps {
+  matchCount: number;
+  surplusCount: number;
+  deficitCount: number;
+}
+```
+
+三个 StatCard 横排：相符(绿) / 盘盈(橙) / 盘亏(红)
+
+---
+
+### 5.9 DeptTreeSelect（部门树选择器）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/department/DeptTreeSelect.tsx` |
+
+**Props**：
+
+```typescript
+interface DeptTreeSelectProps {
+  value?: number;
+  onChange?: (id: number) => void;
+  disabled?: boolean;
+  restrictSubtree?: number;  // role=2 时限制可选范围
+}
+```
+
+数据源：`useGetDeptTreeQuery()`，转换为 TreeSelect `treeData`
+
+---
+
+### 5.10 AssetDetail（资产详情展示）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/asset/AssetDetail.tsx` |
+
+**Props**：
+
+```typescript
+interface AssetDetailProps {
+  asset: Asset;
+  roleLevel: 1 | 2 | 3;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}
+```
+
+渲染 `<Descriptions column={2} bordered>` + 操作按钮区
+
+---
+
+### 5.11 InventoryTaskTable（盘点任务列表）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/inventory/InventoryTaskTable.tsx` |
+
+**Props**：
+
+```typescript
+interface InventoryTaskTableProps {
+  roleLevel: 1 | 2;
+  basePath: '/admin' | '/college';  // 路由前缀
+}
+```
+
+**列**：taskName, scopeDeptName, startTime, endTime, progress, status, 操作
+
+**操作**：
+- 进入盘点 → `navigate(\`${basePath}/inventory/tasks/${id}\`)`
+- 归档 → `useArchiveTaskMutation` + confirm
+
+---
+
+### 5.12 ReportCharts（报表图表组）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/report/ReportCharts.tsx` |
+
+**Props**：
+
+```typescript
+interface ReportChartsProps {
+  activeTab: 'dept' | 'category' | 'diff';
+  departmentId?: number;
+  taskId?: number;
+}
+```
+
+| Tab | 左图 | 右表 |
+|---|---|---|
+| dept | Column 柱状图 | 部门明细 ProTable |
+| category | Pie 饼图 | 类别明细 ProTable |
+| diff | DiffSummary 卡片 | 差异明细 ProTable |
+
+---
+
+### 5.13 CreateUserModal（创建用户弹窗）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/user/CreateUserModal.tsx` |
+
+**Props**：
+
+```typescript
+interface CreateUserModalProps {
+  open: boolean;
+  onClose: () => void;
+  onSuccess: (user: UserInfo) => void;
+  roleLevel: 1 | 2;  // 当前操作者角色
+}
+```
+
+**role=2 限制**：`roleLevel` 选择器只显示「普通师生」，departmentId 限制本院子树
+
+---
+
+### 5.14 ExportModal（导出进度弹窗）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/report/ExportModal.tsx` |
+
+**流程**：
+1. `POST /report/export` → 获得 jobId
+2. 每 2s 轮询 `GET /report/export/:jobId`
+3. status=2 → `window.open(downloadUrl)` 自动下载
+4. status=3 → 显示 errorMessage
+
+**UI**：Modal 内 `<Steps>` 或 `<Progress>` + 状态文字（排队中/处理中/已完成/失败）
+
+---
+
+### 5.15 AssetPickerModal（资产选择弹窗）
+
+| 属性 | 规格 |
+|---|---|
+| 文件 | `components/asset/AssetPickerModal.tsx` |
+
+**Props**：
+
+```typescript
+interface AssetPickerModalProps {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (asset: Asset) => void;
+  filter: { status?: number; statusIn?: number[]; userId?: number };
+}
+```
+
+用于 WorkflowCreateForm 中选择资产，内嵌 ProTable + 单选
+
+---
+
+## 6. 组件依赖关系图
+
+```
+Layout
+├── TopHeader
+├── SidebarMenu
+└── Outlet
+    ├── PageHeader
+    ├── StatCard / DiffSummary / ReportCharts
+    ├── AssetTable → StatusTag
+    ├── AssetForm → DeptTreeSelect
+    ├── AssetDetail → StatusTag
+    ├── WorkflowTable → WorkflowDetail(Drawer) → WorkflowTimeline
+    ├── WorkflowCreateForm → AssetPickerModal
+    ├── InventoryTaskTable
+    ├── InventoryTaskForm → DeptTreeSelect
+    ├── InventoryTaskDetailPage → UniverSpreadsheet
+    ├── DepartmentPage → DeptTreeSelect
+    └── UserManagePage → CreateUserModal
+```
+
+---
+
+*文档版本：v1.1 | 2026-07-08*

@@ -299,7 +299,11 @@ frontend/
 ├── doc/                           # 设计文档
 │   ├── 01-design.md               #  本文档
 │   ├── 02-directory.md            #  目录结构详细说明
-│   └── 03-pages.md                #  页面级详细设计
+│   ├── 03-pages.md                #  页面级详细设计（21 个页面）
+│   ├── 04-backend-api.md          #  后端 API 参考
+│   ├── 05-components.md           #  组件规格
+│   ├── 06-visual-design.md        #  美术设计规范
+│   └── 07-implementation.md         #  AI 开发蓝图
 │
 ├── public/                        # 静态资源
 ├── index.html
@@ -536,4 +540,4 @@ export default defineConfig({
 
 ---
 
-*文档版本：v1.0 | 2026-07-07*
+*文档版本：v1.1 | 2026-07-08*
