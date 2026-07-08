@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	dsn := getEnv("MYSQL_DSN", "fams:fams_dev_pass@tcp(localhost:3306)/fams_asset?parseTime=true")
+	dsn := getEnv("MYSQL_DSN", "fams:fams_dev_pass@tcp(localhost:3306)/fams_asset?parseTime=true&charset=utf8mb4&collation=utf8mb4_unicode_ci")
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Fatalf("connect mysql: %v", err)

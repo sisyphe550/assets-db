@@ -26,7 +26,7 @@ type lifecycleEvent struct {
 }
 
 func main() {
-	dsn := getEnv("MYSQL_DSN", "fams:fams_dev_pass@tcp(localhost:3306)/fams_asset?parseTime=true")
+	dsn := getEnv("MYSQL_DSN", "fams:fams_dev_pass@tcp(localhost:3306)/fams_asset?parseTime=true&charset=utf8mb4&collation=utf8mb4_unicode_ci")
 	kafkaBroker := getEnv("KAFKA_BROKER", "localhost:9094")
 	kafkaTopic := getEnv("KAFKA_TOPIC", "fams-asset-lifecycle-events")
 	groupID := getEnv("KAFKA_GROUP", "asset-consumer")

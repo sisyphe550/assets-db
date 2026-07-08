@@ -9,4 +9,12 @@ INSERT INTO asset_ledger (id, asset_no, name, category, price, purchase_time, lo
     (503, 'EQUIP-2026-0003', '实验台',     '家具', 10000.00, '2025-01-01 00:00:00', '软件工程实验室', 103, 10003, 0, 2),
     (504, 'EQUIP-2026-0004', '示波器',     '设备', 10000.00, '2025-01-01 00:00:00', '网络工程实验室', 104, NULL,  0, 1),
     (505, 'EQUIP-2026-0005', '车床',       '设备', 10000.00, '2025-01-01 00:00:00', '机械工程学院',   20,  NULL,  0, 1)
-ON DUPLICATE KEY UPDATE id=id;
+ON DUPLICATE KEY UPDATE
+    name=VALUES(name),
+    category=VALUES(category),
+    location=VALUES(location),
+    price=VALUES(price),
+    department_id=VALUES(department_id),
+    user_id=VALUES(user_id),
+    is_shared=VALUES(is_shared),
+    status=VALUES(status);
