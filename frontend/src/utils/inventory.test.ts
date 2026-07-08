@@ -23,6 +23,11 @@ describe('inventory utils', () => {
     expect(items[0].modifiedCells.actual_location).toBe('102');
   });
 
+  it('skips rows with empty actual location', () => {
+    const empty = { ...baseRow, actualLocation: '', notes: '' };
+    expect(buildSubmitItems([empty])).toHaveLength(0);
+  });
+
   it('skips rows where actual location matches book location', () => {
     const unchanged = { ...baseRow, actualLocation: '101', notes: '' };
     expect(buildSubmitItems([unchanged])).toHaveLength(0);

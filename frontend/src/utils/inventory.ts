@@ -17,7 +17,9 @@ export interface SpreadsheetRow {
 function rowHasEdits(row: SpreadsheetRow): boolean {
   if (row.isSurplus) return true;
   if (row.notes.trim() || row.foundName.trim()) return true;
-  return row.actualLocation.trim() !== row.bookLocation.trim();
+  const actual = row.actualLocation.trim();
+  if (!actual) return false;
+  return actual !== row.bookLocation.trim();
 }
 
 export function buildSubmitItems(rows: SpreadsheetRow[]): SubmitItem[] {

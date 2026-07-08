@@ -458,7 +458,7 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 			}
 			json.Unmarshal(respBody, &result)
 			for _, a := range result.Assets {
-				if assetNo, ok := a["asset_no"].(string); ok {
+				if assetNo := rpcAssetNo(a); assetNo != "" {
 					bookAssets[assetNo] = a
 				}
 			}
@@ -477,8 +477,7 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 
 		if bookAsset, ok := bookAssets[assetNo]; ok {
 			// 账面存在：正常记录
-			assetID, _ := bookAsset["id"].(float64)
-			aid := int64(assetID)
+			aid := rpcAssetIDInt64(bookAsset)
 			records = append(records, model.InventoryRecord{
 				TaskID: taskID, AssetID: &aid,
 				OperatorID: &opID, IsScanned: 1,
@@ -499,8 +498,7 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 	// 盘亏候选（账面有但 draft 无）
 	for assetNo, bookAsset := range bookAssets {
 		if _, ok := draftAssetNos[assetNo]; !ok {
-			assetID, _ := bookAsset["id"].(float64)
-			aid := int64(assetID)
+			aid := rpcAssetIDInt64(bookAsset)
 			records = append(records, model.InventoryRecord{
 				TaskID: taskID, AssetID: &aid,
 				IsScanned: 0,
@@ -575,10 +573,10 @@ func (h *InvHandler) ExpectedAssets(w http.ResponseWriter, r *http.Request) {
 				var list []map[string]any
 				for _, a := range result.Assets {
 					list = append(list, map[string]any{
-						"assetId":      a["id"],
-						"assetNo":      a["asset_no"],
-						"name":         a["name"],
-						"bookLocation": a["location"],
+						"assetId":      rpcAssetID(a),
+						"assetNo":      rpcAssetNo(a),
+						"name":         rpcAssetName(a),
+						"bookLocation": rpcAssetLocation(a),
 					})
 				}
 				writeOK(w, map[string]any{"list": list, "total": len(list)})
@@ -590,6 +588,54 @@ func (h *InvHandler) ExpectedAssets(w http.ResponseWriter, r *http.Request) {
 }
 
 // ========== helpers ==========
+
+// rpcAsset* 兼容 asset-rpc 返回的 PascalCase 与 snake_case 字段名
+func rpcAssetNo(a map[string]any) string {
+	if v, ok := a["AssetNo"].(string); ok {
+		return v
+	}
+	if v, ok := a["asset_no"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func rpcAssetID(a map[string]any) any {
+	if v, ok := a["ID"]; ok {
+		return v
+	}
+	return a["id"]
+}
+
+func rpcAssetIDInt64(a map[string]any) int64 {
+	if v, ok := a["ID"].(float64); ok {
+		return int64(v)
+	}
+	if v, ok := a["id"].(float64); ok {
+		return int64(v)
+	}
+	return 0
+}
+
+func rpcAssetName(a map[string]any) string {
+	if v, ok := a["Name"].(string); ok {
+		return v
+	}
+	if v, ok := a["name"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func rpcAssetLocation(a map[string]any) string {
+	if v, ok := a["Location"].(string); ok {
+		return v
+	}
+	if v, ok := a["location"].(string); ok {
+		return v
+	}
+	return ""
+}
 
 func writeOK(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
