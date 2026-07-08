@@ -1,5 +1,5 @@
-import PlaceholderPage from '@/pages/PlaceholderPage';
+import AssetDetailView from '@/components/asset/AssetDetailView';
 
 export default function AssetDetailPage() {
-  return <PlaceholderPage title="资产详情" phase="P3" />;
+  return <AssetDetailView basePath="/college" />;
 }

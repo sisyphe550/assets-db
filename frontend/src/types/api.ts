@@ -19,3 +19,51 @@ export interface LoginRequest {
   username: string;
   password: string;
 }
+
+export interface Asset {
+  id: number;
+  assetNo: string;
+  name: string;
+  category: string;
+  price: number;
+  purchaseTime: string;
+  location: string;
+  departmentId: number;
+  userId: number | null;
+  isShared: number;
+  status: 1 | 2 | 3 | 4;
+}
+
+export interface CreateAssetReq {
+  assetNo: string;
+  name: string;
+  category: string;
+  price: number;
+  purchaseTime: string;
+  location: string;
+  departmentId: number;
+  isShared: number;
+}
+
+export type UpdateAssetReq = Partial<
+  Pick<CreateAssetReq, 'name' | 'category' | 'location' | 'departmentId' | 'isShared'>
+>;
+
+export interface AssetListParams {
+  page?: number;
+  pageSize?: number;
+  category?: string;
+  status?: number;
+  keyword?: string;
+  scope?: 'my';
+  userId?: string | number;
+}
+
+export interface DeptTreeNode {
+  id: number;
+  parentId: number;
+  deptName: string;
+  deptCode: string;
+  path: string;
+  children: DeptTreeNode[] | null;
+}

@@ -9,3 +9,12 @@ export const ROLE_MAP: Record<number, string> = {
   2: '学院管理员',
   3: '普通师生',
 };
+
+export const ASSET_STATUS_MAP: Record<number, { label: string; color: string }> = {
+  1: { label: '在库', color: 'green' },
+  2: { label: '领用中', color: 'blue' },
+  3: { label: '维修中', color: 'orange' },
+  4: { label: '已报废', color: 'default' },
+};
+
+export const ASSET_CATEGORIES = ['设备', '家具', '实验器材', '办公用品', '其他'] as const;
