@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { unwrapApiResponse } from '@/utils/api';
+import { unwrapApiResponse, getApiErrorCode } from '@/utils/api';
 
 describe('unwrapApiResponse', () => {
   it('returns data when code is 0', () => {
@@ -17,5 +17,12 @@ describe('unwrapApiResponse', () => {
     } catch (err) {
       expect((err as Error & { code?: number }).code).toBe(40301);
     }
+  });
+});
+
+describe('getApiErrorCode', () => {
+  it('reads code from RTK error shape', () => {
+    expect(getApiErrorCode({ data: { code: 40303 } })).toBe(40303);
+    expect(getApiErrorCode({ code: 40302 })).toBe(40302);
   });
 });

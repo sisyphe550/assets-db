@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -21,7 +21,10 @@ import {
 } from '@/store/api/assetApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectCurrentUser } from '@/store/slices/authSlice';
+import { useGetDeptTreeQuery } from '@/store/api/userApi';
+import { getApiErrorCode } from '@/utils/api';
 import { formatDate, formatPrice } from '@/utils/format';
+import { collectSubtreeIds, findDeptNode } from '@/utils/dept';
 import type { CreateAssetReq } from '@/types/api';
 
 interface AssetDetailViewProps {
@@ -40,8 +43,23 @@ export default function AssetDetailView({ basePath }: AssetDetailViewProps) {
   });
   const [updateAsset, { isLoading: updating }] = useUpdateAssetMutation();
   const [deleteAsset, { isLoading: deleting }] = useDeleteAssetMutation();
+  const { data: deptTree } = useGetDeptTreeQuery(undefined, {
+    skip: !user || user.roleLevel !== 2,
+  });
 
-  const canEdit = user && user.roleLevel <= 2;
+  const allowedDeptIds = useMemo(() => {
+    if (!user || user.roleLevel !== 2 || !deptTree) return null;
+    const root = findDeptNode(deptTree, user.departmentId);
+    const ids = root ? collectSubtreeIds(root) : [user.departmentId];
+    return new Set(ids);
+  }, [user, deptTree]);
+
+  const canEdit =
+    user &&
+    (user.roleLevel === 1 ||
+      (user.roleLevel === 2 && data && allowedDeptIds?.has(data.departmentId)));
+
+  const canDelete = user?.roleLevel === 1;
 
   const handleUpdate = async (values: CreateAssetReq) => {
     try {
@@ -86,7 +104,7 @@ export default function AssetDetailView({ basePath }: AssetDetailViewProps) {
   }
 
   if (isError) {
-    const code = (error as { code?: number })?.code;
+    const code = getApiErrorCode(error);
     if (code === 40401) {
       return (
         <Result
@@ -135,9 +153,11 @@ export default function AssetDetailView({ basePath }: AssetDetailViewProps) {
           canEdit ? (
             <Space>
               <Button onClick={() => setEditOpen(true)}>编辑</Button>
-              <Button danger loading={deleting} onClick={handleDelete}>
-                删除
-              </Button>
+              {canDelete && (
+                <Button danger loading={deleting} onClick={handleDelete}>
+                  删除
+                </Button>
+              )}
             </Space>
           ) : null
         }

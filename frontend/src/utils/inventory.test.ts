@@ -10,17 +10,34 @@ const baseRow: SpreadsheetRow = {
   assetNo: 'EQUIP-2026-0001',
   name: '激光切割机',
   bookLocation: '101',
-  actualLocation: '101',
+  actualLocation: '102',
   notes: '正常',
   foundName: '',
   isSurplus: false,
 };
 
 describe('inventory utils', () => {
-  it('builds submit items from edited rows', () => {
+  it('builds submit items only for edited rows', () => {
     const items = buildSubmitItems([baseRow]);
     expect(items).toHaveLength(1);
-    expect(items[0].modifiedCells.actual_location).toBe('101');
+    expect(items[0].modifiedCells.actual_location).toBe('102');
+  });
+
+  it('skips rows where actual location matches book location', () => {
+    const unchanged = { ...baseRow, actualLocation: '101', notes: '' };
+    expect(buildSubmitItems([unchanged])).toHaveLength(0);
+  });
+
+  it('includes surplus rows even without location edit', () => {
+    const surplus: SpreadsheetRow = {
+      ...baseRow,
+      assetNo: 'UNKNOWN-1',
+      key: 'UNKNOWN-1',
+      isSurplus: true,
+      actualLocation: '',
+      bookLocation: '-',
+    };
+    expect(buildSubmitItems([surplus])).toHaveLength(1);
   });
 
   it('marks conflict and success rows', () => {

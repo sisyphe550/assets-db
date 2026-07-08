@@ -1,15 +1,16 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { Card, Col, Empty, Result, Row, Select, Spin, Tabs } from 'antd';
 import { ProTable, type ProColumns } from '@ant-design/pro-components';
-import type { CategoryStatItem, DeptStatItem } from '@/types/api';
+import type { CategoryStatItem, DeptStatItem, InventoryRecord } from '@/types/api';
 import { useGetAssetsQuery } from '@/store/api/assetApi';
-import { useGetTasksQuery } from '@/store/api/inventoryApi';
+import { useGetRecordsQuery, useGetTasksQuery } from '@/store/api/inventoryApi';
 import {
   useGetAssetsByDeptQuery,
   useGetInventoryDiffQuery,
 } from '@/store/api/reportApi';
 import { useGetDeptTreeQuery } from '@/store/api/userApi';
 import DiffSummary from '@/components/report/DiffSummary';
+import StatusTag from '@/components/common/StatusTag';
 import {
   aggregateByCategory,
   CHART_COLORS,
@@ -50,6 +51,10 @@ export default function ReportCharts({
   const { data: diffData, isLoading: diffLoading } = useGetInventoryDiffQuery(taskId!, {
     skip: !taskId || activeTab !== 'diff',
   });
+  const { data: recordsData, isLoading: recordsLoading } = useGetRecordsQuery(
+    { taskId: taskId!, page: 1, pageSize: 100 },
+    { skip: !taskId || activeTab !== 'diff' },
+  );
 
   const deptMap = useMemo(() => {
     const map = new Map<number, string>();
@@ -103,6 +108,19 @@ export default function ReportCharts({
       title: '总价值',
       dataIndex: 'totalValue',
       render: (_, r) => formatPrice(r.totalValue),
+    },
+  ];
+
+  const diffRecordColumns: ProColumns<InventoryRecord>[] = [
+    { title: '资产编号', dataIndex: 'assetNo', width: 160 },
+    { title: '名称', dataIndex: 'name', width: 140 },
+    { title: '账面位置', dataIndex: 'bookLocation', width: 140 },
+    { title: '实际位置', dataIndex: 'actualLocation', width: 140 },
+    {
+      title: '差异',
+      dataIndex: 'diffStatus',
+      width: 100,
+      render: (_, r) => <StatusTag type="inventoryDiff" value={r.diffStatus} />,
     },
   ];
 
@@ -234,22 +252,16 @@ export default function ReportCharts({
                 deficitCount={diffData?.loss ?? 0}
                 loading={diffLoading}
               />
-              <Card type="inner" title="差异汇总" style={{ marginTop: 16 }}>
-                <ProTable
-                  rowKey="label"
+              <Card type="inner" title="差异明细" style={{ marginTop: 16 }}>
+                <ProTable<InventoryRecord>
+                  rowKey="assetNo"
                   search={false}
                   options={false}
                   pagination={false}
-                  loading={diffLoading}
-                  dataSource={[
-                    { label: '相符', count: diffData?.match ?? 0 },
-                    { label: '盘盈', count: diffData?.surplus ?? 0 },
-                    { label: '盘亏', count: diffData?.loss ?? 0 },
-                  ]}
-                  columns={[
-                    { title: '差异类型', dataIndex: 'label' },
-                    { title: '数量', dataIndex: 'count', width: 120 },
-                  ]}
+                  loading={recordsLoading}
+                  dataSource={recordsData?.list ?? []}
+                  columns={diffRecordColumns}
+                  scroll={{ x: 720 }}
                 />
               </Card>
             </>

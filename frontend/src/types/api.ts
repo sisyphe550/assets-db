@@ -163,6 +163,7 @@ export interface ExpectedAsset {
   assetNo: string;
   name: string;
   bookLocation: string;
+  expectedUpdatedAt?: string | null;
 }
 
 export interface SubmitItem {

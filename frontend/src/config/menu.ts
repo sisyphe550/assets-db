@@ -11,6 +11,7 @@ export const adminMenu: AppMenuItem[] = [
   { key: '/admin/departments', label: '组织架构', iconName: 'ApartmentOutlined' },
   { key: '/admin/users', label: '用户管理', iconName: 'TeamOutlined' },
   { key: '/admin/inventory/tasks', label: '盘点管理', iconName: 'TableOutlined' },
+  { key: '/admin/workflow/all', label: '全部工单', iconName: 'UnorderedListOutlined' },
   { key: '/admin/reports', label: '统计报表', iconName: 'BarChartOutlined' },
 ];
 
@@ -19,6 +20,7 @@ export const collegeMenu: AppMenuItem[] = [
   { key: '/college/assets', label: '本院资产', iconName: 'DatabaseOutlined' },
   { key: '/college/workflow/todo', label: '工单审批', iconName: 'AuditOutlined' },
   { key: '/college/inventory/tasks', label: '盘点管理', iconName: 'TableOutlined' },
+  { key: '/college/users', label: '用户管理', iconName: 'TeamOutlined' },
   { key: '/college/reports', label: '统计报表', iconName: 'BarChartOutlined' },
 ];
 

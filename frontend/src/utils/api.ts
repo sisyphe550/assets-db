@@ -8,3 +8,9 @@ export function unwrapApiResponse<T>(response: ApiResponse<T>): T {
   }
   return response.data;
 }
+
+export function getApiErrorCode(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const e = error as { data?: { code?: number }; code?: number };
+  return e.data?.code ?? e.code;
+}

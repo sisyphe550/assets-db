@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   Empty,
+  Modal,
   Result,
   Skeleton,
   Space,
@@ -22,6 +23,9 @@ import {
   useGetTaskQuery,
   useSubmitRecordsMutation,
 } from '@/store/api/inventoryApi';
+import { useAppSelector } from '@/store/hooks';
+import { selectCurrentUser } from '@/store/slices/authSlice';
+import { getApiErrorCode } from '@/utils/api';
 import { formatDateTime } from '@/utils/format';
 import {
   applySubmitResult,
@@ -43,13 +47,16 @@ export default function InventoryTaskDetailView({
   const { id, taskId } = useParams();
   const taskIdNum = Number(id ?? taskId);
   const navigate = useNavigate();
+  const user = useAppSelector(selectCurrentUser);
+  const [pollAfterArchive, setPollAfterArchive] = useState(false);
 
-  const { data: task, isLoading, isError, refetch } = useGetTaskQuery(taskIdNum, {
+  const { data: task, isLoading, isError, error, refetch } = useGetTaskQuery(taskIdNum, {
     skip: !taskIdNum,
+    pollingInterval: pollAfterArchive ? 2000 : 0,
   });
   const { data: expectedData, isLoading: expectedLoading } = useGetExpectedAssetsQuery(
     taskIdNum,
-    { skip: !taskIdNum },
+    { skip: !taskIdNum || task?.status !== 1 },
   );
   const { data: recordsData } = useGetRecordsQuery(
     { taskId: taskIdNum, page: 1, pageSize: 50 },
@@ -60,7 +67,18 @@ export default function InventoryTaskDetailView({
   const [submitRecords, { isLoading: submitting }] = useSubmitRecordsMutation();
   const [archiveTask, { isLoading: archiving }] = useArchiveTaskMutation();
 
+  useEffect(() => {
+    if (task?.status === 3 && pollAfterArchive) {
+      setPollAfterArchive(false);
+    }
+  }, [task?.status, pollAfterArchive]);
+
   const readOnly = !task || task.status !== 1;
+
+  const assigneeDenied = useMemo(() => {
+    if (basePath !== '/user' || !user || !task) return false;
+    return !task.assigneeIds.includes(user.id);
+  }, [basePath, user, task]);
 
   useEffect(() => {
     if (expectedData?.list) {
@@ -70,10 +88,11 @@ export default function InventoryTaskDetailView({
           assetNo: item.assetNo,
           name: item.name,
           bookLocation: item.bookLocation,
-          actualLocation: item.bookLocation,
+          actualLocation: '',
           notes: '',
           foundName: '',
           isSurplus: false,
+          expectedUpdatedAt: item.expectedUpdatedAt ?? null,
         })),
       );
     }
@@ -87,7 +106,7 @@ export default function InventoryTaskDetailView({
   const handleSubmit = async () => {
     const items = buildSubmitItems(rows);
     if (!items.length) {
-      message.warning('请先填写盘点数据');
+      message.warning('请先修改实际位置、备注或添加盘盈行后再提交');
       return;
     }
     try {
@@ -104,6 +123,25 @@ export default function InventoryTaskDetailView({
       const e = err as { message?: string };
       message.error(e.message ?? '提交失败');
     }
+  };
+
+  const handleArchive = () => {
+    Modal.confirm({
+      title: '确认归档',
+      content: '归档后将进入比对阶段，师生将无法继续提交草稿。确定归档吗？',
+      okText: '归档',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await archiveTask({ id: task!.id }).unwrap();
+          setPollAfterArchive(true);
+          message.success('已归档，正在比对…');
+        } catch (err: unknown) {
+          const e = err as { message?: string };
+          message.error(e.message ?? '归档失败');
+        }
+      },
+    });
   };
 
   const addSurplusRow = () => {
@@ -127,7 +165,22 @@ export default function InventoryTaskDetailView({
     return <Spin size="large" style={{ display: 'block', margin: '40vh auto' }} />;
   }
 
+  const errCode = getApiErrorCode(error);
   if (isError || !task) {
+    if (basePath === '/user' && (errCode === 40302 || errCode === 40303)) {
+      return (
+        <Result
+          status="403"
+          title="无权参与该盘点任务"
+          subTitle="您未被指派为该任务的盘点员"
+          extra={
+            <Button type="primary" onClick={() => navigate('/user/assets')}>
+              返回我的资产
+            </Button>
+          }
+        />
+      );
+    }
     return (
       <Result
         status="error"
@@ -135,6 +188,21 @@ export default function InventoryTaskDetailView({
         extra={
           <Button type="primary" onClick={() => refetch()}>
             重试
+          </Button>
+        }
+      />
+    );
+  }
+
+  if (assigneeDenied) {
+    return (
+      <Result
+        status="403"
+        title="无权参与该盘点任务"
+        subTitle="您未被指派为该任务的盘点员"
+        extra={
+          <Button type="primary" onClick={() => navigate('/user/assets')}>
+            返回我的资产
           </Button>
         }
       />
@@ -156,19 +224,7 @@ export default function InventoryTaskDetailView({
         }
         extra={
           showArchive && task.status === 1 ? (
-            <Button
-              danger
-              loading={archiving}
-              onClick={async () => {
-                try {
-                  await archiveTask({ id: task.id }).unwrap();
-                  message.success('已归档');
-                } catch (err: unknown) {
-                  const e = err as { message?: string };
-                  message.error(e.message ?? '归档失败');
-                }
-              }}
-            >
+            <Button danger loading={archiving} onClick={handleArchive}>
               归档
             </Button>
           ) : null
@@ -179,6 +235,15 @@ export default function InventoryTaskDetailView({
           {task.submittedCount ?? 0} / 应盘 {task.expectedAssetCount ?? 0}
         </Typography.Paragraph>
       </Card>
+
+      {task.status === 2 && (
+        <Card>
+          <div style={{ textAlign: 'center', padding: 48 }}>
+            <Spin size="large" />
+            <Typography.Paragraph style={{ marginTop: 16 }}>比对中，请稍候…</Typography.Paragraph>
+          </div>
+        </Card>
+      )}
 
       {task.status === 3 && recordsData?.list?.length ? (
         <Card title="差异报告">
@@ -201,7 +266,7 @@ export default function InventoryTaskDetailView({
         </Card>
       ) : null}
 
-      {task.status !== 3 && (
+      {task.status === 1 && (
         <Card
           title="盘点表格"
           extra={

@@ -9,28 +9,27 @@ export interface SpreadsheetRow {
   notes: string;
   foundName: string;
   isSurplus: boolean;
+  expectedUpdatedAt?: string | null;
   rowState?: 'success' | 'conflict' | 'failure';
   rowMessage?: string;
 }
 
+function rowHasEdits(row: SpreadsheetRow): boolean {
+  if (row.isSurplus) return true;
+  if (row.notes.trim() || row.foundName.trim()) return true;
+  return row.actualLocation.trim() !== row.bookLocation.trim();
+}
+
 export function buildSubmitItems(rows: SpreadsheetRow[]): SubmitItem[] {
-  return rows
-    .filter(
-      (row) =>
-        row.isSurplus ||
-        row.actualLocation.trim() ||
-        row.notes.trim() ||
-        row.foundName.trim(),
-    )
-    .map((row) => ({
-      assetNo: row.assetNo,
-      modifiedCells: {
-        actual_location: row.actualLocation,
-        temp_notes: row.notes,
-        found_name: row.foundName,
-      },
-      expectedUpdatedAt: null,
-    }));
+  return rows.filter(rowHasEdits).map((row) => ({
+    assetNo: row.assetNo,
+    modifiedCells: {
+      actual_location: row.actualLocation,
+      temp_notes: row.notes,
+      found_name: row.foundName,
+    },
+    expectedUpdatedAt: row.expectedUpdatedAt ?? null,
+  }));
 }
 
 export function applySubmitResult(
