@@ -1,6 +1,7 @@
 import { Card, Typography } from 'antd';
 import { useAppSelector } from '@/store/hooks';
 import { selectCurrentUser } from '@/store/slices/authSlice';
+import DashboardOverview from '@/components/report/DashboardOverview';
 
 export default function CollegeDashboardPage() {
   const user = useAppSelector(selectCurrentUser);
@@ -10,6 +11,11 @@ export default function CollegeDashboardPage() {
       <Typography.Paragraph>
         欢迎，{user?.realName ?? '院级管理员'}（{user?.departmentName}）。
       </Typography.Paragraph>
+      <DashboardOverview
+        roleLevel={2}
+        basePath="/college"
+        departmentId={user?.departmentId}
+      />
     </Card>
   );
 }

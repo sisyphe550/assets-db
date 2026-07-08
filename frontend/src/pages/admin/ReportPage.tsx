@@ -1,5 +1,5 @@
-import PlaceholderPage from '@/pages/PlaceholderPage';
+import ReportView from '@/components/report/ReportView';
 
 export default function ReportPage() {
-  return <PlaceholderPage title="统计报表" phase="P6" />;
+  return <ReportView roleLevel={1} />;
 }

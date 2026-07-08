@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@ant-design/charts": "^2.2.1",
     "@ant-design/icons": "5.5.1",
     "@ant-design/pro-components": "2.8.2",
     "@reduxjs/toolkit": "2.5.0",

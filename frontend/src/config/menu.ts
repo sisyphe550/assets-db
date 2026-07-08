@@ -19,6 +19,7 @@ export const collegeMenu: AppMenuItem[] = [
   { key: '/college/assets', label: '本院资产', iconName: 'DatabaseOutlined' },
   { key: '/college/workflow/todo', label: '工单审批', iconName: 'AuditOutlined' },
   { key: '/college/inventory/tasks', label: '盘点管理', iconName: 'TableOutlined' },
+  { key: '/college/reports', label: '统计报表', iconName: 'BarChartOutlined' },
 ];
 
 export const userMenu: AppMenuItem[] = [

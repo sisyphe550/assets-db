@@ -23,6 +23,7 @@ export default defineConfig({
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
           antd: ['antd', '@ant-design/pro-components', '@ant-design/icons'],
+          charts: ['@ant-design/charts'],
         },
       },
     },

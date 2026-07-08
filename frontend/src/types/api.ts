@@ -179,3 +179,40 @@ export interface UserListParams {
   roleLevel?: number;
   keyword?: string;
 }
+
+export interface DeptStatItem {
+  departmentId: number;
+  departmentName?: string;
+  totalCount: number;
+  inStockCount: number;
+  inUseCount: number;
+  totalValue: number;
+}
+
+export interface DeptStatResponse {
+  items: Omit<DeptStatItem, 'departmentName'>[];
+}
+
+export interface CategoryStatItem {
+  category: string;
+  count: number;
+  totalValue: number;
+}
+
+export interface InventoryDiffReport {
+  match: number;
+  surplus: number;
+  loss: number;
+}
+
+export interface ExportJob {
+  jobId: number;
+  status: 0 | 1 | 2 | 3;
+  downloadUrl?: string | null;
+  errorMessage?: string | null;
+}
+
+export interface CreateExportReq {
+  exportType: 'asset_list' | 'inventory_diff' | 'workflow_log';
+  params?: Record<string, unknown>;
+}
