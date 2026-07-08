@@ -1,5 +1,5 @@
-import PlaceholderPage from '@/pages/PlaceholderPage';
+import UserTable from '@/components/user/UserTable';
 
 export default function UserManagePage() {
-  return <PlaceholderPage title="用户管理" phase="P7" />;
+  return <UserTable roleLevel={1} />;
 }

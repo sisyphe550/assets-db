@@ -1,5 +1,5 @@
-import PlaceholderPage from '@/pages/PlaceholderPage';
+import DepartmentManager from '@/components/department/DepartmentManager';
 
 export default function DepartmentPage() {
-  return <PlaceholderPage title="组织架构" phase="P7" />;
+  return <DepartmentManager />;
 }

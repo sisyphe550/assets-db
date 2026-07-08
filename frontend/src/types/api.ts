@@ -68,6 +68,29 @@ export interface DeptTreeNode {
   children: DeptTreeNode[] | null;
 }
 
+export interface CreateDeptReq {
+  parentId: number;
+  deptName: string;
+  deptCode: string;
+  sortOrder?: number;
+}
+
+export interface CreateUserReq {
+  username: string;
+  password: string;
+  realName: string;
+  roleLevel: 1 | 2 | 3;
+  departmentId: number;
+}
+
+export interface UpdateUserStatusReq {
+  status: 0 | 1;
+}
+
+export interface CollegeSubtreeResponse {
+  deptIds: number[];
+}
+
 export interface WorkflowRequest {
   id: number;
   assetId: number;
