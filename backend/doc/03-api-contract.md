@@ -137,6 +137,22 @@ HTTP 200 + `code: 0`，即使 `data.conflicts` 非空，表示请求已被处理
 
 ---
 
+### 1.5.1 GET `/user/departments/college-subtree`
+
+**鉴权**：是
+
+**说明**：返回当前用户所属学院及全部下属部门 ID（用于共享资产过滤等场景）
+
+**Response data**：
+
+```json
+{
+  "deptIds": [15, 103, 104]
+}
+```
+
+---
+
 ### 1.6 POST `/user/departments`
 
 **权限**：role=1
@@ -155,6 +171,32 @@ HTTP 200 + `code: 0`，即使 `data.conflicts` 非空，表示请求已被处理
 **Response data**：新建节点完整对象（含 `id`, `path`）
 
 **错误**：40401 父节点不存在；40903 dept_code 重复
+
+---
+
+---
+
+### 1.10 GET `/user/users`
+
+**权限**：role≤2
+
+**Query**：`page`, `pageSize`, `keyword?`（匹配 username/realName）, `departmentId?`, `roleLevel?`
+
+**行为**：
+- role=1：全校用户
+- role=2：仅本学院子树用户
+
+**Response data**：标准分页，`list` 项含 `id`, `username`, `realName`, `roleLevel`, `departmentId`, `departmentName`, `status`（不含 password）
+
+---
+
+### 1.11 GET `/user/users/:id`
+
+**权限**：role≤2（role=2 仅限子树内用户）
+
+**Response data**：同 list 单项结构
+
+**错误**：40402 用户不存在；40302 越权
 
 ---
 
@@ -235,7 +277,7 @@ HTTP 200 + `code: 0`，即使 `data.conflicts` 非空，表示请求已被处理
 
 ### 2.2 GET `/asset/assets`
 
-**Query**：`page`, `pageSize`, `category?`, `status?`, `keyword?`（匹配 name/asset_no）
+**Query**：`page`, `pageSize`, `category?`, `status?`, `keyword?`（匹配 name/asset_no）, `scope?`（`my`=仅当前用户领用资产）, `userId?`（`me` 或具体 ID）
 
 **Response data**：分页结构，list 项：
 
@@ -295,7 +337,7 @@ WHERE is_shared = 1
   AND department_id IN (:user_college_subtree_ids)
 ```
 
-`user_college_subtree_ids`：取用户 `department_id` 向上找到学院节点（parent 的 parent 或 path 深度=2 的节点）再展开子树。
+`user_college_subtree_ids`：取用户 `department_id` 向上找到学院节点（path 深度=2）再展开子树。
 
 ---
 
@@ -338,13 +380,16 @@ WHERE is_shared = 1
 
 ### 3.2 GET `/workflow/requests`
 
-**Query**：`page`, `pageSize`, `scope=my|todo|done`, `type?`, `status?`
+**Query**：`page`, `pageSize`, `scope=my|todo|done|all`, `type?`, `status?`, `assetId?`
 
 | scope | 行为 |
 | --- | --- |
 | my | requester_id = 当前 uid |
 | todo | role=2 院级 stage=1 且 dept 在子树；role=1 校级 stage=2 |
 | done | 当前用户参与审批过的 log |
+| all | 全部工单（role≤2） |
+
+`assetId`：可选，筛选指定资产的工单历史。
 
 ---
 
@@ -406,7 +451,34 @@ WHERE is_shared = 1
 
 ### 4.2 GET `/inventory/tasks`
 
-**Query**：`page`, `pageSize`, `status?`
+**Query**：`page`, `pageSize`, `status?`, `scope?`（`assigned`=仅当前用户被指派任务，role=3 默认行为）
+
+**Response data**（分页 list 项）：
+
+```json
+{
+  "id": 1,
+  "taskName": "2026信息学院实验室盘点",
+  "scopeDeptId": 15,
+  "creatorId": 10002,
+  "startTime": "2026-07-01T00:00:00+08:00",
+  "endTime": "2026-07-31T23:59:59+08:00",
+  "status": 1,
+  "assigneeIds": [10003, 10004],
+  "expectedAssetCount": 50,
+  "submittedCount": 15
+}
+```
+
+**权限**：role≤2 见管辖范围内任务；role=3 仅见指派给自己的任务
+
+---
+
+### 4.2.1 GET `/inventory/tasks/:id`
+
+**Response data**：同 list 单项结构
+
+**错误**：40405 任务不存在；40302/40303 越权或未指派
 
 ---
 

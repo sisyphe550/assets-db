@@ -20,6 +20,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"github.com/sisyphus550/assets-db/backend/pkg/dept"
 	"github.com/sisyphus550/assets-db/backend/pkg/errx"
 	"github.com/sisyphus550/assets-db/backend/pkg/middleware"
 	"github.com/sisyphus550/assets-db/backend/pkg/redislock"
@@ -67,7 +68,179 @@ func (h *InvHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeOK(w, map[string]any{"taskId": t.ID, "taskName": t.TaskName})
+	expectedCount := h.countExpectedAssets(r, t.ScopeDeptID)
+	writeOK(w, map[string]any{
+		"taskId":             t.ID,
+		"taskName":           t.TaskName,
+		"scopeDeptId":        t.ScopeDeptID,
+		"status":             1,
+		"assigneeIds":        req.AssigneeIDs,
+		"expectedAssetCount": expectedCount,
+	})
+}
+
+// GET /inventory/tasks
+func (h *InvHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
+	roleLevel, _ := middleware.GetRoleLevel(r.Context())
+	uid, _ := middleware.GetUID(r.Context())
+	deptID, _ := middleware.GetDeptID(r.Context())
+
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(q.Get("pageSize"))
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	var statusFilter *int16
+	if s := q.Get("status"); s != "" {
+		v, _ := strconv.Atoi(s)
+		st := int16(v)
+		statusFilter = &st
+	}
+
+	filter := model.TaskListFilter{
+		Status:   statusFilter,
+		Page:     page,
+		PageSize: pageSize,
+	}
+
+	scope := q.Get("scope")
+	if roleLevel == 3 || scope == "assigned" {
+		filter.AssigneeUID = &uid
+	} else if roleLevel == 2 {
+		filter.ScopeDeptIDs = h.deptSubtreeIDs(r.Context(), deptID)
+	}
+	// role=1: no dept filter (all tasks)
+
+	im := model.NewInvModel(h.DB)
+	list, total, err := im.ListTasks(r.Context(), filter)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+
+	items := make([]map[string]any, len(list))
+	for i, t := range list {
+		assignees, _ := im.GetAssigneeIDs(r.Context(), t.ID)
+		expected := h.countExpectedAssets(r, t.ScopeDeptID)
+		submitted := h.countSubmittedDrafts(r.Context(), t.ID)
+		items[i] = taskToMap(t, assignees, expected, submitted)
+	}
+	writeOK(w, map[string]any{"list": items, "page": page, "pageSize": pageSize, "total": total})
+}
+
+// GET /inventory/tasks/:id
+func (h *InvHandler) GetTask(w http.ResponseWriter, r *http.Request) {
+	roleLevel, _ := middleware.GetRoleLevel(r.Context())
+	uid, _ := middleware.GetUID(r.Context())
+	deptID, _ := middleware.GetDeptID(r.Context())
+
+	taskID := parseIDForAction(r.URL.Path, "/tasks/", "")
+	if taskID == 0 {
+		writeErr(w, errx.ErrInvalidParam)
+		return
+	}
+
+	im := model.NewInvModel(h.DB)
+	task, err := im.FindTask(r.Context(), taskID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+
+	if roleLevel == 3 {
+		ok, _ := im.IsAssignee(r.Context(), taskID, uid)
+		if !ok {
+			writeErr(w, errx.ErrNotAssigned)
+			return
+		}
+	} else if roleLevel == 2 {
+		allowed := false
+		for _, id := range h.deptSubtreeIDs(r.Context(), deptID) {
+			if id == task.ScopeDeptID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			writeErr(w, errx.ErrDeptAccessDenied)
+			return
+		}
+	}
+
+	assignees, _ := im.GetAssigneeIDs(r.Context(), taskID)
+	expected := h.countExpectedAssets(r, task.ScopeDeptID)
+	submitted := h.countSubmittedDrafts(r.Context(), task.ID)
+	writeOK(w, taskToMap(*task, assignees, expected, submitted))
+}
+
+func taskToMap(t model.InventoryTask, assignees []int64, expected, submitted int) map[string]any {
+	return map[string]any{
+		"id":                 t.ID,
+		"taskName":           t.TaskName,
+		"scopeDeptId":        t.ScopeDeptID,
+		"creatorId":          t.CreatorID,
+		"startTime":          t.StartTime.Format(time.RFC3339),
+		"endTime":            t.EndTime.Format(time.RFC3339),
+		"status":             t.Status,
+		"assigneeIds":        assignees,
+		"expectedAssetCount": expected,
+		"submittedCount":     submitted,
+	}
+}
+
+func (h *InvHandler) deptSubtreeIDs(ctx context.Context, rootDeptID int64) []int64 {
+	rows, err := h.DB.QueryContext(ctx, `SELECT id, parent_id, path FROM sys_department`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var all []dept.Department
+	for rows.Next() {
+		var d dept.Department
+		if err := rows.Scan(&d.ID, &d.ParentID, &d.Path); err != nil {
+			return nil
+		}
+		all = append(all, d)
+	}
+	ids, err := dept.SubtreeIDs(all, rootDeptID)
+	if err != nil {
+		return nil
+	}
+	return ids
+}
+
+func (h *InvHandler) countExpectedAssets(r *http.Request, scopeDeptID int64) int {
+	if h.AssetRPC == "" {
+		return 0
+	}
+	body, _ := json.Marshal(map[string]any{"deptId": scopeDeptID})
+	resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Assets []map[string]any `json:"assets"`
+	}
+	json.Unmarshal(respBody, &result)
+	return len(result.Assets)
+}
+
+func (h *InvHandler) countSubmittedDrafts(ctx context.Context, taskID int64) int {
+	if h.DraftCol == nil {
+		return 0
+	}
+	count, err := h.DraftCol.CountDocuments(ctx, bson.M{"task_id": taskID})
+	if err != nil {
+		return 0
+	}
+	return int(count)
 }
 
 // POST /inventory/tasks/:id/submit — 批量提交盘点草稿
@@ -431,14 +604,17 @@ func writeErr(w http.ResponseWriter, err error) {
 }
 
 func parseIDForAction(path, prefix, action string) int64 {
-	// "/api/v1/inventory/tasks/123/submit" → 123
 	s := path
-	if i := strings.Index(s, action); i >= 0 {
-		s = s[:i]
+	if action != "" {
+		if i := strings.Index(s, action); i >= 0 {
+			s = s[:i]
+		}
 	}
 	idx := strings.Index(s, prefix)
-	if idx < 0 { return 0 }
-	s = s[idx+len(prefix):]
+	if idx < 0 {
+		return 0
+	}
+	s = strings.TrimSuffix(s[idx+len(prefix):], "/")
 	id, _ := strconv.ParseInt(s, 10, 64)
 	return id
 }

@@ -79,9 +79,10 @@ func (m *WorkflowModel) FindByID(ctx context.Context, id int64) (*WorkflowReques
 }
 
 // List 查询工单列表
-func (m *WorkflowModel) List(ctx context.Context, scope string, uid int64, deptIDs []int64, page, pageSize int) ([]WorkflowRequest, int, error) {
+func (m *WorkflowModel) List(ctx context.Context, scope string, uid int64, deptIDs []int64, assetID *int64, page, pageSize int) ([]WorkflowRequest, int, error) {
 	var query, countQ string
 	var args []any
+	argIdx := 1
 
 	switch scope {
 	case "my":
@@ -89,8 +90,8 @@ func (m *WorkflowModel) List(ctx context.Context, scope string, uid int64, deptI
 				 FROM workflow_request WHERE requester_id=$1`
 		countQ = `SELECT COUNT(*) FROM workflow_request WHERE requester_id=$1`
 		args = append(args, uid)
+		argIdx = 2
 	case "todo":
-		// role=2: stage=1 + dept in subtree; role=1: stage=2
 		query = `SELECT id, asset_id, requester_id, department_id, type, current_stage, status, reason, created_at, updated_at
 				 FROM workflow_request WHERE status=1`
 		countQ = `SELECT COUNT(*) FROM workflow_request WHERE status=1`
@@ -99,8 +100,20 @@ func (m *WorkflowModel) List(ctx context.Context, scope string, uid int64, deptI
 				 FROM workflow_request w JOIN workflow_log l ON w.id=l.request_id WHERE l.operator_id=$1`
 		countQ = `SELECT COUNT(DISTINCT w.id) FROM workflow_request w JOIN workflow_log l ON w.id=l.request_id WHERE l.operator_id=$1`
 		args = append(args, uid)
+		argIdx = 2
+	case "all", "":
+		query = `SELECT id, asset_id, requester_id, department_id, type, current_stage, status, reason, created_at, updated_at
+				 FROM workflow_request WHERE 1=1`
+		countQ = `SELECT COUNT(*) FROM workflow_request WHERE 1=1`
 	default:
 		return nil, 0, errx.ErrInvalidParam
+	}
+
+	if assetID != nil {
+		query += ` AND asset_id=$` + itoa(argIdx)
+		countQ += ` AND asset_id=$` + itoa(argIdx)
+		args = append(args, *assetID)
+		argIdx++
 	}
 
 	var total int
@@ -111,7 +124,7 @@ func (m *WorkflowModel) List(ctx context.Context, scope string, uid int64, deptI
 	}
 
 	offset := (page - 1) * pageSize
-	query += " ORDER BY created_at DESC LIMIT $2 OFFSET $3"
+	query += ` ORDER BY created_at DESC LIMIT $` + itoa(argIdx) + ` OFFSET $` + itoa(argIdx+1)
 	args = append(args, pageSize, offset)
 
 	rows, err := m.db.QueryContext(ctx, query, args...)
@@ -217,7 +230,7 @@ func (m *WorkflowModel) ApproveStage2AndArchive(ctx context.Context, requestID, 
 
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO workflow_outbox (event_type, partition_key, payload) VALUES ($1,$2,$3)`,
-		eventType, itoa(assetID), string(payload)); err != nil {
+		eventType, fmt.Sprintf("%d", assetID), string(payload)); err != nil {
 		return err
 	}
 
@@ -255,4 +268,4 @@ func contains(s, sub string) bool {
 	return false
 }
 
-func itoa(i int64) string { return fmt.Sprintf("%d", i) }
+func itoa(i int) string { return fmt.Sprintf("%d", i) }

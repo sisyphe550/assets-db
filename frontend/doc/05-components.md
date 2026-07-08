@@ -286,7 +286,7 @@ interface WorkflowTableProps {
 | endTime | `<DatePicker showTime>` | `required`, 自定义校验 `endTime > startTime` |
 | assigneeIds | `<Select mode="multiple">` | `required: '请至少选择一名盘点员'` |
 
-**assigneeIds 数据源**：调用 `GET /user/departments/tree` 获取 scope 内的用户列表
+**assigneeIds 数据源**：`GET /user/users?departmentId={scopeDeptId}&roleLevel=3`（按盘点范围部门筛选师生用户）
 
 **状态**：
 - 42203（时间窗无效）：`form.setFields([{ name: 'endTime', errors: ['结束时间必须晚于开始时间'] }])`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sisyphus550/assets-db/backend/pkg/errx"
@@ -66,46 +67,96 @@ func (m *InvModel) FindTask(ctx context.Context, id int64) (*InventoryTask, erro
 	return &t, err
 }
 
-func (m *InvModel) ListTasks(ctx context.Context, deptID int64, status *int16, page, pageSize int) ([]InventoryTask, int, error) {
-	query := `SELECT id, task_name, scope_dept_id, creator_id, start_time, end_time, status FROM inventory_task WHERE 1=1`
-	countQ := `SELECT COUNT(*) FROM inventory_task WHERE 1=1`
+// TaskListFilter 盘点任务列表筛选
+type TaskListFilter struct {
+	ScopeDeptIDs []int64 // scope_dept_id IN (...)，nil 表示不限制
+	AssigneeUID  *int64  // 非空时仅返回指派给该用户的任务
+	Status       *int16
+	Page         int
+	PageSize     int
+}
+
+func (m *InvModel) ListTasks(ctx context.Context, f TaskListFilter) ([]InventoryTask, int, error) {
+	base := `FROM inventory_task t`
+	where := ` WHERE 1=1`
 	var args []any
 	argIdx := 1
 
-	query += ` AND scope_dept_id = $` + itoa(argIdx)
-	countQ += ` AND scope_dept_id = $` + itoa(argIdx)
-	args = append(args, deptID)
-	argIdx++
-
-	if status != nil {
-		query += ` AND status = $` + itoa(argIdx)
-		countQ += ` AND status = $` + itoa(argIdx)
-		args = append(args, *status)
+	if f.AssigneeUID != nil {
+		base += ` JOIN inventory_task_assignee a ON t.id = a.task_id`
+		where += ` AND a.user_id = $` + itoa(argIdx)
+		args = append(args, *f.AssigneeUID)
+		argIdx++
+	}
+	if len(f.ScopeDeptIDs) > 0 {
+		ph := make([]string, len(f.ScopeDeptIDs))
+		for i, id := range f.ScopeDeptIDs {
+			ph[i] = "$" + itoa(argIdx)
+			args = append(args, id)
+			argIdx++
+		}
+		where += ` AND t.scope_dept_id IN (` + strings.Join(ph, ",") + `)`
+	}
+	if f.Status != nil {
+		where += ` AND t.status = $` + itoa(argIdx)
+		args = append(args, *f.Status)
 		argIdx++
 	}
 
+	countQ := `SELECT COUNT(DISTINCT t.id) ` + base + where
 	var total int
-	cArgs := make([]any, len(args))
-	copy(cArgs, args)
-	m.db.QueryRowContext(ctx, countQ, cArgs...).Scan(&total)
+	countArgs := make([]any, len(args))
+	copy(countArgs, args)
+	if err := m.db.QueryRowContext(ctx, countQ, countArgs...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 
-	offset := (page - 1) * pageSize
-	query += ` ORDER BY created_at DESC LIMIT $` + itoa(argIdx) + ` OFFSET $` + itoa(argIdx+1)
-	args = append(args, pageSize, offset)
+	query := `SELECT DISTINCT t.id, t.task_name, t.scope_dept_id, t.creator_id, t.start_time, t.end_time, t.status, t.created_at ` +
+		base + where + ` ORDER BY t.created_at DESC LIMIT $` + itoa(argIdx) + ` OFFSET $` + itoa(argIdx+1)
+	args = append(args, f.PageSize, (f.Page-1)*f.PageSize)
 
 	rows, err := m.db.QueryContext(ctx, query, args...)
-	if err != nil { return nil, 0, err }
+	if err != nil {
+		return nil, 0, err
+	}
 	defer rows.Close()
 
 	var list []InventoryTask
 	for rows.Next() {
 		var t InventoryTask
-		if err := rows.Scan(&t.ID, &t.TaskName, &t.ScopeDeptID, &t.CreatorID, &t.StartTime, &t.EndTime, &t.Status); err != nil {
+		var createdAt time.Time
+		if err := rows.Scan(&t.ID, &t.TaskName, &t.ScopeDeptID, &t.CreatorID, &t.StartTime, &t.EndTime, &t.Status, &createdAt); err != nil {
 			return nil, 0, err
 		}
 		list = append(list, t)
 	}
 	return list, total, rows.Err()
+}
+
+func (m *InvModel) GetAssigneeIDs(ctx context.Context, taskID int64) ([]int64, error) {
+	rows, err := m.db.QueryContext(ctx,
+		`SELECT user_id FROM inventory_task_assignee WHERE task_id=$1 ORDER BY user_id`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (m *InvModel) CountSubmitted(ctx context.Context, taskID int64) (int, error) {
+	// 已归档后从 inventory_record 统计；进行中返回 0（由 handler 从 Mongo 补充）
+	var count int
+	err := m.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM inventory_record WHERE task_id=$1 AND is_scanned=1`, taskID).Scan(&count)
+	return count, err
 }
 
 func (m *InvModel) ArchiveTask(ctx context.Context, taskID int64, records []InventoryRecord) error {

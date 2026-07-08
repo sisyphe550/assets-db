@@ -163,3 +163,30 @@ func TestChildIDs(t *testing.T) {
 		t.Errorf("ChildIDs(15) = %v, want empty", ids)
 	}
 }
+
+func TestCollegeSubtreeIDs(t *testing.T) {
+	all := []Department{
+		{ID: 1, ParentID: 0, Path: "/1/"},
+		{ID: 15, ParentID: 1, Path: "/1/15/"},
+		{ID: 103, ParentID: 15, Path: "/1/15/103/"},
+		{ID: 104, ParentID: 15, Path: "/1/15/104/"},
+		{ID: 20, ParentID: 1, Path: "/1/20/"},
+	}
+
+	ids, err := CollegeSubtreeIDs(all, 103)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []int64{15, 103, 104}
+	if !reflect.DeepEqual(ids, want) {
+		t.Errorf("CollegeSubtreeIDs(103) = %v, want %v", ids, want)
+	}
+
+	ids, err = CollegeSubtreeIDs(all, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(ids, []int64{20}) {
+		t.Errorf("CollegeSubtreeIDs(20) = %v, want [20]", ids)
+	}
+}

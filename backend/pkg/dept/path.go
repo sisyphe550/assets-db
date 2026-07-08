@@ -135,3 +135,22 @@ func AncestorID(path string, depth int) (int64, error) {
 	}
 	return strconv.ParseInt(parts[depth-1], 10, 64)
 }
+
+// CollegeSubtreeIDs 获取用户所属学院及全部下属部门 ID（用于共享资产可见范围）
+func CollegeSubtreeIDs(all []Department, userDeptID int64) ([]int64, error) {
+	var userPath string
+	for _, d := range all {
+		if d.ID == userDeptID {
+			userPath = d.Path
+			break
+		}
+	}
+	if userPath == "" {
+		return nil, errx.ErrNotFound
+	}
+	collegeID, err := AncestorID(userPath, 2)
+	if err != nil {
+		return nil, err
+	}
+	return SubtreeIDs(all, collegeID)
+}

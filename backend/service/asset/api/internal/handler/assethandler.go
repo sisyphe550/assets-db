@@ -3,6 +3,7 @@ package handler
 import (
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,10 +17,17 @@ import (
 )
 
 type AssetHandler struct {
-	DB *sql.DB
+	DB         *sql.DB
+	UserAPIURL string
 }
 
-func NewAssetHandler(db *sql.DB) *AssetHandler { return &AssetHandler{DB: db} }
+func NewAssetHandler(db *sql.DB) *AssetHandler {
+	return &AssetHandler{DB: db, UserAPIURL: "http://localhost:8888"}
+}
+
+func NewAssetHandlerWithUserAPI(db *sql.DB, userAPIURL string) *AssetHandler {
+	return &AssetHandler{DB: db, UserAPIURL: userAPIURL}
+}
 
 // POST /asset/assets
 func (h *AssetHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -56,14 +64,18 @@ func (h *AssetHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *AssetHandler) List(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	page, _ := strconv.Atoi(q.Get("page"))
-	if page < 1 { page = 1 }
+	if page < 1 {
+		page = 1
+	}
 	pageSize, _ := strconv.Atoi(q.Get("pageSize"))
-	if pageSize < 1 || pageSize > 100 { pageSize = 20 }
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
 
-	// 部门隔离
-	subIDs, unlimited := middleware.GetDeptSubtree(r.Context())
 	roleLevel, _ := middleware.GetRoleLevel(r.Context())
-	// role=1 校管全量可见，或 dept scope middleware 设置了 unlimited
+	uid, _ := middleware.GetUID(r.Context())
+
+	subIDs, unlimited := middleware.GetDeptSubtree(r.Context())
 	if roleLevel == 1 {
 		unlimited = true
 	}
@@ -83,8 +95,30 @@ func (h *AssetHandler) List(w http.ResponseWriter, r *http.Request) {
 		statusFilter = &st
 	}
 
-	list, total, err := model.NewAssetModel(h.DB).List(r.Context(), deptIDs,
-		q.Get("category"), q.Get("keyword"), statusFilter, page, pageSize)
+	var userIDFilter *int64
+	if q.Get("scope") == "my" {
+		userIDFilter = &uid
+	} else if u := q.Get("userId"); u != "" {
+		if u == "me" {
+			userIDFilter = &uid
+		} else {
+			id, _ := strconv.ParseInt(u, 10, 64)
+			if id > 0 {
+				userIDFilter = &id
+			}
+		}
+	}
+
+	list, total, err := model.NewAssetModel(h.DB).List(r.Context(), model.AssetListFilter{
+		DeptIDs:    deptIDs,
+		Category:   q.Get("category"),
+		Keyword:    q.Get("keyword"),
+		Status:     statusFilter,
+		UserID:     userIDFilter,
+		SharedOnly: false,
+		Page:       page,
+		PageSize:   pageSize,
+	})
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -145,9 +179,73 @@ func (h *AssetHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 // GET /asset/assets/shared
 func (h *AssetHandler) SharedList(w http.ResponseWriter, r *http.Request) {
-	// role=3 用户看到本学院 is_shared=1 的资产
-	// 简化实现：由 dept middleware 限制子树
-	h.List(w, r)
+	roleLevel, _ := middleware.GetRoleLevel(r.Context())
+	if roleLevel != 3 {
+		writeErr(w, errx.ErrForbidden)
+		return
+	}
+
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(q.Get("pageSize"))
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	collegeDeptIDs, err := h.collegeSubtreeIDs(r)
+	if err != nil || len(collegeDeptIDs) == 0 {
+		writeOK(w, map[string]any{"list": []any{}, "page": page, "pageSize": pageSize, "total": 0})
+		return
+	}
+
+	list, total, err := model.NewAssetModel(h.DB).List(r.Context(), model.AssetListFilter{
+		DeptIDs:    collegeDeptIDs,
+		SharedOnly: true,
+		Page:       page,
+		PageSize:   pageSize,
+	})
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+
+	items := make([]map[string]any, len(list))
+	for i, a := range list {
+		items[i] = assetToMap(a)
+	}
+	writeOK(w, map[string]any{"list": items, "page": page, "pageSize": pageSize, "total": total})
+}
+
+func (h *AssetHandler) collegeSubtreeIDs(r *http.Request) ([]int64, error) {
+	req, err := http.NewRequest(http.MethodGet, h.UserAPIURL+"/api/v1/user/departments/college-subtree", nil)
+	if err != nil {
+		return nil, err
+	}
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var result struct {
+		Code int `json:"code"`
+		Data struct {
+			DeptIds []int64 `json:"deptIds"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+	if result.Code != 0 {
+		return nil, errx.ErrInternal
+	}
+	return result.Data.DeptIds, nil
 }
 
 // ========== helpers ==========

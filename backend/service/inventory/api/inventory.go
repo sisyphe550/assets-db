@@ -57,8 +57,12 @@ func main() {
 
 	authMux.HandleFunc("/api/v1/inventory/tasks", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
-		case http.MethodPost: h.CreateTask(w, r)
-		default: w.WriteHeader(http.StatusMethodNotAllowed)
+		case http.MethodPost:
+			h.CreateTask(w, r)
+		case http.MethodGet:
+			h.ListTasks(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	})
 	authMux.HandleFunc("/api/v1/inventory/tasks/", func(w http.ResponseWriter, r *http.Request) {
@@ -70,6 +74,8 @@ func main() {
 			h.Records(w, r)
 		} else if strings.Contains(r.URL.Path, "/expected-assets") {
 			h.ExpectedAssets(w, r)
+		} else if r.Method == http.MethodGet {
+			h.GetTask(w, r)
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}

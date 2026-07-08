@@ -35,12 +35,12 @@ Create workflow → College approve → School approve
 
 | 服务 | 端口 | 接口数 | 测试方式 | 状态 |
 |---|---|---|---|---|
-| user-api | 8888 | 9 | curl + E2E | PASS |
+| user-api | 8888 | 11 | curl + E2E | PASS |
 | user-rpc | 8081 | 3 (gRPC) | grpcurl | PASS |
 | asset-api | 8889 | 6 | curl + E2E | PASS |
 | asset-rpc | 8082 | 4 (HTTP) | 编译 | `*` |
 | workflow-api | 8890 | 5 | curl + E2E | PASS |
-| inventory-api | 8891 | 4 | curl + E2E | PASS |
+| inventory-api | 8891 | 6 | curl + E2E | PASS |
 | report-api | 8892 | 6 | curl | `**` |
 
 `*` asset-rpc 编译通过但未单独测试 gRPC 调用

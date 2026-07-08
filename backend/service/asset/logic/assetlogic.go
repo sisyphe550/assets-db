@@ -57,7 +57,9 @@ func GetAsset(ctx context.Context, db *sql.DB, id int64) (*model.AssetLedger, er
 
 // ListByDeptIDs 按部门子树查询资产
 func ListByDeptIDs(ctx context.Context, db *sql.DB, deptIDs []int64) ([]model.AssetLedger, error) {
-	list, _, err := model.NewAssetModel(db).List(ctx, deptIDs, "", "", nil, 1, 10000)
+	list, _, err := model.NewAssetModel(db).List(ctx, model.AssetListFilter{
+		DeptIDs: deptIDs, Page: 1, PageSize: 10000,
+	})
 	return list, err
 }
 

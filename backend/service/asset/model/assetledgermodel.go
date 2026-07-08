@@ -56,37 +56,58 @@ func (m *AssetModel) FindByID(ctx context.Context, id int64) (*AssetLedger, erro
 	return &a, err
 }
 
-func (m *AssetModel) List(ctx context.Context, deptIDs []int64, category, keyword string, status *int8, page, pageSize int) ([]AssetLedger, int, error) {
+// AssetListFilter 资产列表查询条件
+type AssetListFilter struct {
+	DeptIDs    []int64
+	Category   string
+	Keyword    string
+	Status     *int8
+	UserID     *int64
+	SharedOnly bool
+	Page       int
+	PageSize   int
+}
+
+func (m *AssetModel) List(ctx context.Context, f AssetListFilter) ([]AssetLedger, int, error) {
 	query := `SELECT id, asset_no, name, category, price, purchase_time, location, department_id, user_id, is_shared, status FROM asset_ledger WHERE deleted_at IS NULL`
 	countQuery := `SELECT COUNT(*) FROM asset_ledger WHERE deleted_at IS NULL`
 	var args []any
 
-	if len(deptIDs) > 0 {
+	if len(f.DeptIDs) > 0 {
 		placeholders := "?"
-		for i := 1; i < len(deptIDs); i++ {
+		for i := 1; i < len(f.DeptIDs); i++ {
 			placeholders += ",?"
 		}
 		cond := " AND department_id IN (" + placeholders + ")"
 		query += cond
 		countQuery += cond
-		for _, id := range deptIDs {
+		for _, id := range f.DeptIDs {
 			args = append(args, id)
 		}
 	}
-	if category != "" {
+	if f.SharedOnly {
+		query += " AND is_shared = 1"
+		countQuery += " AND is_shared = 1"
+	}
+	if f.Category != "" {
 		query += " AND category = ?"
 		countQuery += " AND category = ?"
-		args = append(args, category)
+		args = append(args, f.Category)
 	}
-	if status != nil {
+	if f.Status != nil {
 		query += " AND status = ?"
 		countQuery += " AND status = ?"
-		args = append(args, *status)
+		args = append(args, *f.Status)
 	}
-	if keyword != "" {
+	if f.UserID != nil {
+		query += " AND user_id = ?"
+		countQuery += " AND user_id = ?"
+		args = append(args, *f.UserID)
+	}
+	if f.Keyword != "" {
 		query += " AND (name LIKE ? OR asset_no LIKE ?)"
 		countQuery += " AND (name LIKE ? OR asset_no LIKE ?)"
-		kw := "%" + keyword + "%"
+		kw := "%" + f.Keyword + "%"
 		args = append(args, kw, kw)
 	}
 
@@ -97,9 +118,9 @@ func (m *AssetModel) List(ctx context.Context, deptIDs []int64, category, keywor
 		return nil, 0, err
 	}
 
-	offset := (page - 1) * pageSize
+	offset := (f.Page - 1) * f.PageSize
 	query += " LIMIT ? OFFSET ?"
-	args = append(args, pageSize, offset)
+	args = append(args, f.PageSize, offset)
 
 	rows, err := m.db.QueryContext(ctx, query, args...)
 	if err != nil {

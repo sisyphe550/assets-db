@@ -177,6 +177,9 @@ Response: { "code": 0, "message": "ok", "data": null }
 | POST | `/api/v1/user/logout` | 是 | 登出 |
 | GET | `/api/v1/user/me` | 是 | 当前用户信息 |
 | GET | `/api/v1/user/departments/tree` | 是 | 组织树（按角色裁剪） |
+| GET | `/api/v1/user/departments/college-subtree` | 是 | 当前用户学院子树 ID 列表 |
+| GET | `/api/v1/user/users` | role≤2 | 用户列表（分页） |
+| GET | `/api/v1/user/users/:id` | role≤2 | 用户详情 |
 
 ### 5.2 Asset Service (`:8889`)
 
@@ -210,7 +213,8 @@ Response: { "code": 0, "message": "ok", "data": null }
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
 | POST | `/api/v1/inventory/tasks` | role≤2 | 创建盘点任务 |
-| GET | `/api/v1/inventory/tasks` | role≤2 | 任务列表 |
+| GET | `/api/v1/inventory/tasks` | role≤2/指派员 | 任务列表 |
+| GET | `/api/v1/inventory/tasks/:id` | 是 | 任务详情 |
 | GET | `/api/v1/inventory/tasks/:id/expected-assets` | 是 | 应盘资产清单 |
 | POST | `/api/v1/inventory/tasks/:id/submit` | 指派员 | 批量提交草稿 |
 | POST | `/api/v1/inventory/tasks/:id/archive` | role≤2 | 归档 |

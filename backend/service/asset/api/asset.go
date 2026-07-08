@@ -21,7 +21,7 @@ func main() {
 	}
 	defer db.Close()
 
-	h := handler.NewAssetHandler(db)
+	h := handler.NewAssetHandlerWithUserAPI(db, getEnv("USER_API_URL", "http://localhost:8888"))
 
 	mux := http.NewServeMux()
 	authMux := http.NewServeMux()

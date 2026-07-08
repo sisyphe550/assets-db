@@ -79,9 +79,19 @@ func (h *WorkflowHandler) List(w http.ResponseWriter, r *http.Request) {
 	pageSize, _ := strconv.Atoi(q.Get("pageSize"))
 	if pageSize < 1 || pageSize > 100 { pageSize = 20 }
 	scope := q.Get("scope")
-	if scope == "" { scope = "my" }
+	if scope == "" {
+		scope = "my"
+	}
 
-	list, total, err := model.NewWorkflowModel(h.DB).List(r.Context(), scope, uid, nil, page, pageSize)
+	var assetIDFilter *int64
+	if aid := q.Get("assetId"); aid != "" {
+		id, _ := strconv.ParseInt(aid, 10, 64)
+		if id > 0 {
+			assetIDFilter = &id
+		}
+	}
+
+	list, total, err := model.NewWorkflowModel(h.DB).List(r.Context(), scope, uid, nil, assetIDFilter, page, pageSize)
 	if err != nil {
 		writeErr(w, err)
 		return

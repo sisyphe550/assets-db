@@ -49,10 +49,22 @@ func main() {
 	authMux.HandleFunc("/api/v1/user/logout", h.Logout)
 	authMux.HandleFunc("/api/v1/user/me", h.Me)
 	authMux.HandleFunc("/api/v1/user/departments/tree", h.DeptTree)
+	authMux.HandleFunc("/api/v1/user/departments/college-subtree", h.CollegeSubtree)
 	authMux.HandleFunc("/api/v1/user/departments", h.CreateDept)
-	authMux.HandleFunc("/api/v1/user/users", h.CreateUser)
+	authMux.HandleFunc("/api/v1/user/users", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			h.CreateUser(w, r)
+		case http.MethodGet:
+			h.ListUsers(w, r)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
 	authMux.HandleFunc("/api/v1/user/users/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && hasSuffix(r.URL.Path, "/status") {
+		if r.Method == http.MethodGet && !hasSuffix(r.URL.Path, "/status") && !hasSuffix(r.URL.Path, "/force-logout") {
+			h.GetUser(w, r)
+		} else if r.Method == http.MethodPut && hasSuffix(r.URL.Path, "/status") {
 			h.UpdateUserStatus(w, r)
 		} else if r.Method == http.MethodPost && hasSuffix(r.URL.Path, "/force-logout") {
 			h.ForceLogout(w, r)

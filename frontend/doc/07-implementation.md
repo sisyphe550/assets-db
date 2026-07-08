@@ -477,6 +477,7 @@ interface TokenPair {
 | endpoint | 方法 | 路径 | tags |
 |---|---|---|---|
 | getTasks | query GET | `/inventory/tasks` | InventoryList |
+| getTask | query GET | `/inventory/tasks/:id` | Inventory:{id} |
 | createTask | mutation POST | `/inventory/tasks` | invalidates InventoryList |
 | getExpectedAssets | query GET | `/inventory/tasks/:id/expected-assets` | — |
 | submitRecords | mutation POST | `/inventory/tasks/:id/submit` | — |
@@ -499,7 +500,9 @@ interface TokenPair {
 |---|---|---|---|
 | getDeptTree | query GET | `/user/departments/tree` | DeptTree |
 | createDept | mutation POST | `/user/departments` | invalidates DeptTree |
-| createUser | mutation POST | `/user/users` | — |
+| listUsers | query GET | `/user/users` | UserList |
+| getUser | query GET | `/user/users/:id` | User:{id} |
+| getCollegeSubtree | query GET | `/user/departments/college-subtree` | — |
 | updateUserStatus | mutation PUT | `/user/users/:id/status` | — |
 | forceLogout | mutation POST | `/user/users/:id/force-logout` | — |
 
@@ -720,16 +723,20 @@ export const ROLE_HOME: Record<number, string> = {
 
 ---
 
-## 9. 后端缺口与前端 workaround
+## 9. 后端 API 状态（2026-07-08 已补全）
 
-| 缺口 | 影响页面 | v1 workaround |
-|---|---|---|
-| 无 `GET /user/users` 列表 API | 用户管理 | 用户名输入框 + 通过 `POST /users` 创建 + 状态/下线操作需输入 userId |
-| 无用户名查询 API | 用户管理 | 创建用户后在页面展示「最近创建」本地列表（sessionStorage） |
-| 无 `GET /workflow/requests?assetId=` | 资产详情关联工单 | 资产详情页暂不展示关联工单，或跳转工单列表带 keyword 筛选 |
-| 工单列表无 `assetNo` 展示 | 工单表格 | 前端拿到 `assetId` 后批量 `getAsset` 或在表格列显示 `#assetId` |
+以下接口已在 `feat/frontend-api-gaps` 分支实现，详见 `backend/doc/12-frontend-api-gaps.md`：
 
-> 上述 workaround 已在 `03-pages.md` 和 `06-visual-design.md` 中体现。后续后端补齐 API 后替换。
+| API | 状态 |
+|---|---|
+| `GET /user/users` | ✅ 已实现 |
+| `GET /user/users/:id` | ✅ 已实现 |
+| `GET /user/departments/college-subtree` | ✅ 已实现 |
+| `GET /inventory/tasks` | ✅ 已实现 |
+| `GET /inventory/tasks/:id` | ✅ 已实现 |
+| `GET /asset/assets?scope=my` | ✅ 已实现 |
+| `GET /asset/assets/shared`（is_shared 过滤） | ✅ 已修复 |
+| `GET /workflow/requests?assetId=` | ✅ 已实现 |
 
 ---
 

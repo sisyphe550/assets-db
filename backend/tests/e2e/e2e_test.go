@@ -386,6 +386,136 @@ func TestE2E05_DuplicateAndReject(t *testing.T) {
 	_ = adminInfoToken
 }
 
+// ---- E2E-06: Frontend API gaps (user list, inventory list, asset scope, workflow assetId) ----
+
+func TestE2E06_FrontendAPIGaps(t *testing.T) {
+	checkServices(t)
+
+	adminToken := login(t, "admin_school")
+	studentToken := login(t, "student_001")
+	studentMeToken := login(t, "student_me")
+
+	// 1. GET /user/users
+	listUsers := doRequest(t, "GET", userAPI+"/api/v1/user/users?page=1&pageSize=10&keyword=student", adminToken, nil)
+	if listUsers.Code != 0 {
+		t.Fatalf("list users failed: code=%d msg=%s", listUsers.Code, listUsers.Message)
+	}
+	var usersData struct {
+		List  []struct{ Username string `json:"username"` } `json:"list"`
+		Total int `json:"total"`
+	}
+	json.Unmarshal(listUsers.Data, &usersData)
+	if usersData.Total < 3 {
+		t.Errorf("expected at least 3 students in user list, got total=%d", usersData.Total)
+	}
+	t.Logf("E2E-06: user list OK, total=%d", usersData.Total)
+
+	// 2. GET /user/users/:id
+	getUser := doRequest(t, "GET", userAPI+"/api/v1/user/users/10003", adminToken, nil)
+	if getUser.Code != 0 {
+		t.Fatalf("get user failed: code=%d", getUser.Code)
+	}
+	t.Logf("E2E-06: get user by id OK")
+
+	// 3. GET /inventory/tasks
+	listTasks := doRequest(t, "GET", inventoryAPI+"/api/v1/inventory/tasks?page=1", adminToken, nil)
+	if listTasks.Code != 0 {
+		t.Fatalf("list inventory tasks failed: code=%d msg=%s", listTasks.Code, listTasks.Message)
+	}
+	t.Logf("E2E-06: inventory task list OK")
+
+	// 4. Create task and GET /inventory/tasks/:id
+	taskName := fmt.Sprintf("E2E-Gap-%s", time.Now().Format("150405"))
+	createTask := doRequest(t, "POST", inventoryAPI+"/api/v1/inventory/tasks", adminToken, map[string]any{
+		"taskName":    taskName,
+		"scopeDeptId": 15,
+		"startTime":   "2026-01-01T00:00:00Z",
+		"endTime":     "2026-12-31T23:59:59Z",
+		"assigneeIds": []int64{10003},
+	})
+	if createTask.Code != 0 {
+		t.Fatalf("create task failed: code=%d", createTask.Code)
+	}
+	var taskData struct {
+		TaskID             int64 `json:"taskId"`
+		ExpectedAssetCount int   `json:"expectedAssetCount"`
+		AssigneeIds        []int64 `json:"assigneeIds"`
+	}
+	json.Unmarshal(createTask.Data, &taskData)
+	if taskData.TaskID == 0 {
+		t.Fatal("taskId missing in create response")
+	}
+	getTask := doRequest(t, "GET", fmt.Sprintf("%s/api/v1/inventory/tasks/%d", inventoryAPI, taskData.TaskID), adminToken, nil)
+	if getTask.Code != 0 {
+		t.Fatalf("get task failed: code=%d", getTask.Code)
+	}
+
+	// 5. Student assigned task list
+	assignedTasks := doRequest(t, "GET", inventoryAPI+"/api/v1/inventory/tasks?scope=assigned", studentToken, nil)
+	if assignedTasks.Code != 0 {
+		t.Fatalf("assigned tasks failed: code=%d", assignedTasks.Code)
+	}
+	t.Logf("E2E-06: assigned task list OK")
+
+	// 6. GET /asset/assets/shared — student_001 sees shared asset in college
+	sharedResp := doRequest(t, "GET", assetAPI+"/api/v1/asset/assets/shared", studentToken, nil)
+	if sharedResp.Code != 0 {
+		t.Fatalf("shared assets failed: code=%d", sharedResp.Code)
+	}
+	var sharedData struct {
+		List []struct{ AssetNo string `json:"assetNo"` } `json:"list"`
+	}
+	json.Unmarshal(sharedResp.Data, &sharedData)
+	foundShared := false
+	for _, a := range sharedData.List {
+		if a.AssetNo == "EQUIP-2026-0002" {
+			foundShared = true
+		}
+	}
+	if !foundShared {
+		t.Errorf("student_001 should see shared asset EQUIP-2026-0002")
+	}
+
+	// 7. student_me should NOT see info college shared assets
+	sharedMe := doRequest(t, "GET", assetAPI+"/api/v1/asset/assets/shared", studentMeToken, nil)
+	var sharedMeData struct {
+		List []struct{ AssetNo string `json:"assetNo"` } `json:"list"`
+	}
+	json.Unmarshal(sharedMe.Data, &sharedMeData)
+	for _, a := range sharedMeData.List {
+		if a.AssetNo == "EQUIP-2026-0002" {
+			t.Errorf("student_me should not see EQUIP-2026-0002 from info college")
+		}
+	}
+	t.Logf("E2E-06: shared asset college isolation OK")
+
+	// 8. GET /asset/assets?scope=my — only user's assets
+	myAssets := doRequest(t, "GET", assetAPI+"/api/v1/asset/assets?scope=my", studentToken, nil)
+	if myAssets.Code != 0 {
+		t.Fatalf("my assets failed: code=%d", myAssets.Code)
+	}
+	var myData struct {
+		List []struct {
+			AssetNo string `json:"assetNo"`
+			UserId  int64  `json:"userId"`
+		} `json:"list"`
+	}
+	json.Unmarshal(myAssets.Data, &myData)
+	for _, a := range myData.List {
+		if a.UserId != 10003 {
+			t.Errorf("scope=my leaked asset %s with userId=%d", a.AssetNo, a.UserId)
+		}
+	}
+	t.Logf("E2E-06: scope=my isolation OK")
+
+	// 9. GET /workflow/requests?assetId=501
+	wfByAsset := doRequest(t, "GET", workflowAPI+"/api/v1/workflow/requests?scope=all&assetId=501", adminToken, nil)
+	if wfByAsset.Code != 0 {
+		t.Fatalf("workflow by assetId failed: code=%d", wfByAsset.Code)
+	}
+	t.Logf("E2E-06: workflow assetId filter OK")
+}
+
 // sanitize for log output
 func _s(s string) string {
 	return strings.ReplaceAll(s, "\n", "")

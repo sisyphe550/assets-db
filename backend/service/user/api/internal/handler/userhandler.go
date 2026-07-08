@@ -233,6 +233,28 @@ func (h *UserHandler) DeptTree(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==========================================
+// CollegeSubtree — 当前用户所属学院子树 ID 列表（共享资产过滤用）
+// ==========================================
+
+func (h *UserHandler) CollegeSubtree(w http.ResponseWriter, r *http.Request) {
+	deptID, _ := middleware.GetDeptID(r.Context())
+
+	dm := model.NewDeptModel(h.DB)
+	all, err := dm.FindAll(r.Context())
+	if err != nil {
+		writeErr(w, errx.ErrInternal)
+		return
+	}
+
+	ids, err := dept.CollegeSubtreeIDs(model.ToDeptSlice(all), deptID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeOK(w, map[string]any{"deptIds": ids})
+}
+
+// ==========================================
 // CreateDept
 // ==========================================
 
@@ -351,6 +373,169 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, map[string]any{
 		"id":       u.ID,
 		"username": u.Username,
+	})
+}
+
+// ==========================================
+// ListUsers
+// ==========================================
+
+func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	roleLevel, _ := middleware.GetRoleLevel(r.Context())
+	if roleLevel > 2 {
+		writeErr(w, errx.ErrForbidden)
+		return
+	}
+	adminDeptID, _ := middleware.GetDeptID(r.Context())
+
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(q.Get("pageSize"))
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+
+	var deptIDs []int64
+	if roleLevel == 2 {
+		dm := model.NewDeptModel(h.DB)
+		all, err := dm.FindAll(r.Context())
+		if err != nil {
+			writeErr(w, errx.ErrInternal)
+			return
+		}
+		ids, err := dept.SubtreeIDs(model.ToDeptSlice(all), adminDeptID)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		deptIDs = ids
+	}
+	if deptIDStr := q.Get("departmentId"); deptIDStr != "" {
+		deptID, _ := strconv.ParseInt(deptIDStr, 10, 64)
+		if deptID > 0 {
+			if roleLevel == 2 {
+				found := false
+				for _, id := range deptIDs {
+					if id == deptID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					writeErr(w, errx.ErrDeptAccessDenied)
+					return
+				}
+			}
+			dm := model.NewDeptModel(h.DB)
+			all, _ := dm.FindAll(r.Context())
+			sub, _ := dept.SubtreeIDs(model.ToDeptSlice(all), deptID)
+			deptIDs = sub
+		}
+	}
+
+	var roleFilter *int16
+	if rl := q.Get("roleLevel"); rl != "" {
+		v, _ := strconv.Atoi(rl)
+		r16 := int16(v)
+		roleFilter = &r16
+	}
+
+	um := model.NewUserModel(h.DB)
+	list, total, err := um.List(r.Context(), model.UserListFilter{
+		DeptIDs:   deptIDs,
+		Keyword:   q.Get("keyword"),
+		RoleLevel: roleFilter,
+		Page:      page,
+		PageSize:  pageSize,
+	})
+	if err != nil {
+		writeErr(w, errx.ErrInternal)
+		return
+	}
+
+	dm := model.NewDeptModel(h.DB)
+	deptNameMap := make(map[int64]string)
+	if all, err := dm.FindAll(r.Context()); err == nil {
+		for _, d := range all {
+			deptNameMap[d.ID] = d.DeptName
+		}
+	}
+
+	items := make([]map[string]any, len(list))
+	for i, u := range list {
+		items[i] = map[string]any{
+			"id":             u.ID,
+			"username":       u.Username,
+			"realName":       u.RealName,
+			"roleLevel":      u.RoleLevel,
+			"departmentId":   u.DepartmentID,
+			"departmentName": deptNameMap[u.DepartmentID],
+			"status":         u.Status,
+		}
+	}
+	writeOK(w, map[string]any{"list": items, "page": page, "pageSize": pageSize, "total": total})
+}
+
+// ==========================================
+// GetUser
+// ==========================================
+
+func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
+	roleLevel, _ := middleware.GetRoleLevel(r.Context())
+	if roleLevel > 2 {
+		writeErr(w, errx.ErrForbidden)
+		return
+	}
+	adminDeptID, _ := middleware.GetDeptID(r.Context())
+
+	targetID := parsePathID(r.URL.Path, "/users/", "")
+	if targetID == 0 {
+		writeErr(w, errx.ErrInvalidParam)
+		return
+	}
+
+	um := model.NewUserModel(h.DB)
+	u, err := um.FindByID(r.Context(), targetID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+
+	if roleLevel == 2 {
+		dm := model.NewDeptModel(h.DB)
+		all, _ := dm.FindAll(r.Context())
+		ids, _ := dept.SubtreeIDs(model.ToDeptSlice(all), adminDeptID)
+		found := false
+		for _, id := range ids {
+			if id == u.DepartmentID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			writeErr(w, errx.ErrDeptAccessDenied)
+			return
+		}
+	}
+
+	dm := model.NewDeptModel(h.DB)
+	d, _ := dm.FindByID(r.Context(), u.DepartmentID)
+	deptName := ""
+	if d != nil {
+		deptName = d.DeptName
+	}
+
+	writeOK(w, map[string]any{
+		"id":             u.ID,
+		"username":       u.Username,
+		"realName":       u.RealName,
+		"roleLevel":      u.RoleLevel,
+		"departmentId":   u.DepartmentID,
+		"departmentName": deptName,
+		"status":         u.Status,
 	})
 }
 

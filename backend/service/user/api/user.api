@@ -106,6 +106,15 @@ service user-api {
 	@handler CreateDept
 	post /departments (CreateDeptReq) returns (DeptNode)
 
+	@handler CollegeSubtree
+	get /departments/college-subtree returns (CollegeSubtreeResp)
+
+	@handler ListUsers
+	get /users returns (UserListResp)
+
+	@handler GetUser
+	get /users/:id returns (UserInfo)
+
 	@handler CreateUser
 	post /users (CreateUserReq) returns (CreateUserResp)
 
