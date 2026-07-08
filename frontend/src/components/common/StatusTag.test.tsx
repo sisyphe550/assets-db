@@ -13,6 +13,11 @@ describe('StatusTag', () => {
     expect(screen.getByText('领用')).toBeInTheDocument();
   });
 
+  it('renders inventory status label', () => {
+    render(<StatusTag type="inventory" value={1} />);
+    expect(screen.getByText('进行中')).toBeInTheDocument();
+  });
+
   it('renders unknown asset status fallback', () => {
     render(<StatusTag type="asset" value={99} />);
     expect(screen.getByText('未知(99)')).toBeInTheDocument();

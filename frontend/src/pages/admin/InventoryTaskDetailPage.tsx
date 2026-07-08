@@ -1,5 +1,5 @@
-import PlaceholderPage from '@/pages/PlaceholderPage';
+import InventoryTaskDetailView from '@/components/inventory/InventoryTaskDetailView';
 
 export default function InventoryTaskDetailPage() {
-  return <PlaceholderPage title="盘点详情" phase="P5" />;
+  return <InventoryTaskDetailView basePath="/admin" showArchive />;
 }

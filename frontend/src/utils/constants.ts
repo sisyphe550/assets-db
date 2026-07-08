@@ -37,3 +37,16 @@ export const WORKFLOW_STAGE_MAP: Record<number, string> = {
   2: '待校级复审',
   3: '已归档',
 };
+
+export const INVENTORY_STATUS_MAP: Record<number, { label: string; color: string }> = {
+  1: { label: '进行中', color: 'processing' },
+  2: { label: '比对中', color: 'warning' },
+  3: { label: '已完成', color: 'success' },
+};
+
+export const INVENTORY_DIFF_MAP: Record<number, { label: string; color: string }> = {
+  0: { label: '相符', color: 'success' },
+  1: { label: '位置变更', color: 'processing' },
+  2: { label: '盘盈', color: 'warning' },
+  3: { label: '盘亏', color: 'error' },
+};

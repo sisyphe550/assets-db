@@ -1,5 +1,5 @@
-import PlaceholderPage from '@/pages/PlaceholderPage';
+import InventoryTaskForm from '@/components/inventory/InventoryTaskForm';
 
 export default function InventoryTaskCreatePage() {
-  return <PlaceholderPage title="创建盘点" phase="P5" />;
+  return <InventoryTaskForm basePath="/admin" />;
 }

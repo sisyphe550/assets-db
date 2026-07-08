@@ -1,5 +1,5 @@
-import PlaceholderPage from '@/pages/PlaceholderPage';
+import InventoryTaskDetailView from '@/components/inventory/InventoryTaskDetailView';
 
 export default function InventorySubmitPage() {
-  return <PlaceholderPage title="盘点录入" phase="P5" />;
+  return <InventoryTaskDetailView basePath="/user" />;
 }

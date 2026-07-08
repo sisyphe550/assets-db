@@ -6,6 +6,8 @@ import { assetApi } from './api/assetApi';
 import { userApi } from './api/userApi';
 import { workflowApi } from './api/workflowApi';
 
+import { inventoryApi } from './api/inventoryApi';
+
 export const store = configureStore({
   reducer: {
     auth: authReducer,
@@ -14,6 +16,7 @@ export const store = configureStore({
     [assetApi.reducerPath]: assetApi.reducer,
     [userApi.reducerPath]: userApi.reducer,
     [workflowApi.reducerPath]: workflowApi.reducer,
+    [inventoryApi.reducerPath]: inventoryApi.reducer,
   },
   middleware: (getDefault) =>
     getDefault().concat(
@@ -21,6 +24,7 @@ export const store = configureStore({
       assetApi.middleware,
       userApi.middleware,
       workflowApi.middleware,
+      inventoryApi.middleware,
     ),
 });
 

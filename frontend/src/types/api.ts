@@ -113,3 +113,69 @@ export interface WorkflowListParams {
 export interface ApproveWorkflowReq {
   comment?: string;
 }
+
+export interface InventoryTask {
+  id: number;
+  taskName: string;
+  scopeDeptId: number;
+  creatorId: number;
+  startTime: string;
+  endTime: string;
+  status: 1 | 2 | 3;
+  assigneeIds: number[];
+  expectedAssetCount?: number;
+  submittedCount?: number;
+}
+
+export interface CreateInventoryTaskReq {
+  taskName: string;
+  scopeDeptId: number;
+  startTime: string;
+  endTime: string;
+  assigneeIds: number[];
+}
+
+export interface ExpectedAsset {
+  assetId: number;
+  assetNo: string;
+  name: string;
+  bookLocation: string;
+}
+
+export interface SubmitItem {
+  assetNo: string;
+  modifiedCells: Record<string, string>;
+  expectedUpdatedAt: string | null;
+}
+
+export interface SubmitResult {
+  success: string[];
+  conflicts: { assetNo: string; code: number; message: string }[];
+  failures: { assetNo: string; code: number; message: string }[];
+}
+
+export interface InventoryRecord {
+  assetNo: string;
+  name: string;
+  bookLocation: string;
+  actualLocation: string;
+  diffStatus: 0 | 1 | 2 | 3;
+}
+
+export interface UserListItem {
+  id: number;
+  username: string;
+  realName: string;
+  roleLevel: number;
+  departmentId: number;
+  departmentName: string;
+  status: number;
+}
+
+export interface UserListParams {
+  page?: number;
+  pageSize?: number;
+  departmentId?: number;
+  roleLevel?: number;
+  keyword?: string;
+}
