@@ -42,8 +42,10 @@ export default function DashboardOverview({
 }: DashboardOverviewProps) {
   const navigate = useNavigate();
   const restrictToSubtree = roleLevel === 2;
+  const deptQueryParams =
+    restrictToSubtree && departmentId ? { departmentId } : undefined;
   const { data: deptTree } = useGetDeptTreeQuery();
-  const { data: deptData, isLoading: deptLoading } = useGetAssetsByDeptQuery();
+  const { data: deptData, isLoading: deptLoading } = useGetAssetsByDeptQuery(deptQueryParams);
   const { data: categoryData, isLoading: categoryLoading } = useGetAssetsByCategoryQuery(
     restrictToSubtree && departmentId ? { departmentId } : undefined,
   );

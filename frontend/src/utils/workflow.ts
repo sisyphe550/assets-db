@@ -2,9 +2,18 @@ import type { UserInfo, WorkflowRequest } from '@/types/api';
 
 export type WorkflowAction = 'approve_or_reject';
 
-export function canActOnWorkflow(user: UserInfo, request: WorkflowRequest): WorkflowAction | null {
+export function canActOnWorkflow(
+  user: UserInfo,
+  request: WorkflowRequest,
+  deptSubtreeIds?: number[] | null,
+): WorkflowAction | null {
   if (request.status !== 1) return null;
-  if (user.roleLevel === 2 && request.currentStage === 1) return 'approve_or_reject';
+  if (user.roleLevel === 2 && request.currentStage === 1) {
+    if (deptSubtreeIds?.length && !deptSubtreeIds.includes(request.departmentId)) {
+      return null;
+    }
+    return 'approve_or_reject';
+  }
   if (user.roleLevel === 1 && request.currentStage === 2) return 'approve_or_reject';
   return null;
 }

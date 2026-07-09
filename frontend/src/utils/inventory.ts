@@ -37,7 +37,7 @@ function resolveDraft(
   if (currentUserId != null) {
     const mine = list.find((d) => d.operatorId === currentUserId);
     if (mine) return { draft: mine, ownDraft: true };
-    return { draft: list[0], ownDraft: false };
+    return { ownDraft: false };
   }
   return { draft: list[0], ownDraft: true };
 }

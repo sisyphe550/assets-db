@@ -34,6 +34,10 @@ export default function InventorySpreadsheet({
       placeholder={placeholder}
       onChange={(e) => {
         const next = e.target.value;
+        if (field === 'assetNo') {
+          updateRow(record.key, { assetNo: next, key: next.trim() || record.key });
+          return;
+        }
         if (field === 'name') {
           updateRow(record.key, { name: next, foundName: next });
           return;

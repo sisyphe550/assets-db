@@ -52,6 +52,18 @@ describe('canActOnWorkflow', () => {
       canActOnWorkflow(collegeAdmin, { ...baseRequest, currentStage: 2 }),
     ).toBeNull();
   });
+
+  it('denies college admin outside dept subtree', () => {
+    expect(
+      canActOnWorkflow(collegeAdmin, { ...baseRequest, departmentId: 20 }, [15, 103, 104]),
+    ).toBeNull();
+  });
+
+  it('allows college admin inside dept subtree', () => {
+    expect(canActOnWorkflow(collegeAdmin, baseRequest, [15, 103, 104])).toBe(
+      'approve_or_reject',
+    );
+  });
 });
 
 describe('filterAssetsForWorkflowType', () => {

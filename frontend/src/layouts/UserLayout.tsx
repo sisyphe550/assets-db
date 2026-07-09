@@ -17,7 +17,7 @@ export default function UserLayout() {
   const dispatch = useAppDispatch();
   const { data: me } = useGetMeQuery();
   const { data: assignedTasks } = useGetTasksQuery(
-    { page: 1, pageSize: 20, status: 1, scope: 'assigned' },
+    { page: 1, pageSize: 100, status: 1, scope: 'assigned' },
     { skip: !me },
   );
 

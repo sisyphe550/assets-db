@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -20,6 +20,7 @@ import {
   useRejectRequestMutation,
 } from '@/store/api/workflowApi';
 import { useGetAssetQuery } from '@/store/api/assetApi';
+import { useGetCollegeSubtreeQuery } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectCurrentUser } from '@/store/slices/authSlice';
 import StatusTag from '@/components/common/StatusTag';
@@ -44,14 +45,27 @@ export default function WorkflowDetail({
   const [comment, setComment] = useState('');
 
   const { data, isLoading, isError, refetch } = useGetRequestQuery(requestId, { skip: !open });
+  const { data: collegeSubtree } = useGetCollegeSubtreeQuery(undefined, {
+    skip: !open || user?.roleLevel !== 2,
+  });
   const { data: asset } = useGetAssetQuery(data?.request.assetId ?? 0, {
     skip: !data?.request.assetId,
   });
   const [approve, { isLoading: approving }] = useApproveRequestMutation();
   const [reject, { isLoading: rejecting }] = useRejectRequestMutation();
 
+  useEffect(() => {
+    if (open) {
+      setComment('');
+    }
+  }, [requestId, open]);
+
   const request = data?.request;
-  const canAct = user && request ? canActOnWorkflow(user, request) : null;
+  const deptSubtreeIds = useMemo(
+    () => (user?.roleLevel === 2 ? collegeSubtree?.deptIds : null),
+    [user?.roleLevel, collegeSubtree?.deptIds],
+  );
+  const canAct = user && request ? canActOnWorkflow(user, request, deptSubtreeIds) : null;
 
   const handleApprove = () => {
     Modal.confirm({

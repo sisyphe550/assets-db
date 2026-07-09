@@ -179,7 +179,7 @@ describe('inventory utils', () => {
     expect(merged[0].expectedUpdatedAt).toBe('2026-07-09T04:00:00.000Z');
   });
 
-  it('does not attach CAS timestamp from another operator draft', () => {
+  it('does not show another operator draft cell values', () => {
     const rows = buildRowsFromExpected(
       [
         {
@@ -199,7 +199,7 @@ describe('inventory utils', () => {
       ],
       10002,
     );
-    expect(rows[0].actualLocation).toBe('学生填写');
+    expect(rows[0].actualLocation).toBe('');
     expect(rows[0].expectedUpdatedAt).toBeNull();
   });
 

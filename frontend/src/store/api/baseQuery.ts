@@ -3,9 +3,7 @@ import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolk
 import { message } from 'antd';
 import type { RootState } from '@/store';
 import { setCredentials, logout } from '@/store/slices/authSlice';
-import type { TokenPair } from '@/types/api';
-import type { ApiResponse } from '@/types/common';
-import { unwrapApiResponse } from '@/utils/api';
+import { refreshAccessToken } from '@/utils/authFetch';
 
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: '/api/v1',
@@ -29,20 +27,11 @@ export const baseQueryWithReauth: BaseQueryFn<
     const state = api.getState() as RootState;
     const refreshToken = state.auth.refreshToken;
     if (refreshToken) {
-      const refreshResult = await rawBaseQuery(
-        { url: '/user/refresh', method: 'POST', body: { refreshToken } },
-        api,
-        extraOptions,
-      );
-      if (refreshResult.data) {
-        try {
-          const data = unwrapApiResponse(refreshResult.data as ApiResponse<TokenPair>);
-          api.dispatch(setCredentials(data));
-          result = await rawBaseQuery(args, api, extraOptions);
-          return result;
-        } catch {
-          // fall through to logout
-        }
+      const pair = await refreshAccessToken(refreshToken);
+      if (pair) {
+        api.dispatch(setCredentials(pair));
+        result = await rawBaseQuery(args, api, extraOptions);
+        return result;
       }
     }
     api.dispatch(logout());

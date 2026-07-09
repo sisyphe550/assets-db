@@ -1,10 +1,7 @@
-import { storage } from '@/utils/storage';
+import { fetchWithAuth } from '@/utils/authFetch';
 
 export async function downloadWithAuth(url: string, filename = 'export.csv') {
-  const token = storage.getAccessToken();
-  const res = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const res = await fetchWithAuth(url);
   if (!res.ok) {
     throw new Error(`下载失败 (${res.status})`);
   }

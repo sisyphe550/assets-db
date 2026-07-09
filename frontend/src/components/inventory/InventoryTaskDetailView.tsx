@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -53,9 +53,12 @@ export default function InventoryTaskDetailView({
   const navigate = useNavigate();
   const user = useAppSelector(selectCurrentUser);
   const [pollComparing, setPollComparing] = useState(false);
+  const [compareError, setCompareError] = useState<string | null>(null);
   const compareTriggered = useRef(false);
   const hydratedRef = useRef(false);
   const [rowsReady, setRowsReady] = useState(false);
+  const [recordsPage, setRecordsPage] = useState(1);
+  const [recordsPageSize, setRecordsPageSize] = useState(50);
 
   const { data: task, isLoading, isError, error, refetch } = useGetTaskQuery(taskIdNum, {
     skip: !taskIdNum,
@@ -74,33 +77,41 @@ export default function InventoryTaskDetailView({
     refetchOnFocus: false,
   });
   const { data: recordsData } = useGetRecordsQuery(
-    { taskId: taskIdNum, page: 1, pageSize: 50 },
+    { taskId: taskIdNum, page: recordsPage, pageSize: recordsPageSize },
     { skip: !taskIdNum || task?.status !== 3 },
   );
 
   const [rows, setRows] = useState<SpreadsheetRow[]>([]);
   const [submitRecords, { isLoading: submitting }] = useSubmitRecordsMutation();
   const [archiveTask, { isLoading: archiving }] = useArchiveTaskMutation();
-  const [compareTask] = useCompareTaskMutation();
+  const [compareTask, { isLoading: comparing }] = useCompareTaskMutation();
+
+  const triggerCompare = useCallback(() => {
+    if (!taskIdNum) return;
+    compareTriggered.current = true;
+    setCompareError(null);
+    setPollComparing(true);
+    compareTask(taskIdNum)
+      .unwrap()
+      .then(() => refetch())
+      .catch((err: unknown) => {
+        compareTriggered.current = false;
+        setPollComparing(false);
+        const msg = err instanceof Error ? err.message : '比对失败，请稍后重试';
+        setCompareError(msg);
+      });
+  }, [taskIdNum, compareTask, refetch]);
 
   useEffect(() => {
-    if (task?.status === 2) {
-      setPollComparing(true);
-      if (!compareTriggered.current) {
-        compareTriggered.current = true;
-        compareTask(taskIdNum)
-          .unwrap()
-          .then(() => refetch())
-          .catch(() => {
-            compareTriggered.current = false;
-          });
-      }
+    if (task?.status === 2 && !compareTriggered.current) {
+      triggerCompare();
     }
     if (task?.status === 3) {
       setPollComparing(false);
       compareTriggered.current = false;
+      setCompareError(null);
     }
-  }, [task?.status, taskIdNum, compareTask, refetch]);
+  }, [task?.status, taskIdNum, triggerCompare]);
 
   const readOnly = !task || task.status !== 1;
 
@@ -113,20 +124,27 @@ export default function InventoryTaskDetailView({
     hydratedRef.current = false;
     setRows([]);
     setRowsReady(false);
+    compareTriggered.current = false;
+    setPollComparing(false);
+    setCompareError(null);
+    setRecordsPage(1);
   }, [taskIdNum]);
 
   useEffect(() => {
     if (!taskIdNum || task?.status !== 1) return;
-    if (!expectedData?.list?.length || expectedLoading || draftsLoading) return;
+    if (expectedLoading || draftsLoading) return;
+    if (expectedData === undefined) return;
     if (hydratedRef.current) return;
 
-    setRows(buildRowsFromExpected(expectedData.list, draftsData?.list ?? [], user?.id));
+    setRows(
+      buildRowsFromExpected(expectedData.list ?? [], draftsData?.list ?? [], user?.id),
+    );
     setRowsReady(true);
     hydratedRef.current = true;
   }, [
     taskIdNum,
     task?.status,
-    expectedData?.list,
+    expectedData,
     draftsData?.list,
     expectedLoading,
     draftsLoading,
@@ -193,6 +211,8 @@ export default function InventoryTaskDetailView({
       onOk: async () => {
         try {
           await archiveTask({ id: task!.id }).unwrap();
+          compareTriggered.current = false;
+          setCompareError(null);
           setPollComparing(true);
           message.success('已归档，正在比对…');
         } catch (err: unknown) {
@@ -271,6 +291,8 @@ export default function InventoryTaskDetailView({
   const listPath =
     basePath === '/user' ? '/user/assets' : `${basePath}/inventory/tasks`;
 
+  const hasSpreadsheetRows = rows.length > 0;
+
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Card
@@ -297,19 +319,44 @@ export default function InventoryTaskDetailView({
 
       {task.status === 2 && (
         <Card>
-          <div style={{ textAlign: 'center', padding: 48 }}>
-            <Spin size="large" />
-            <Typography.Paragraph style={{ marginTop: 16 }}>比对中，请稍候…</Typography.Paragraph>
-          </div>
+          {compareError ? (
+            <Result
+              status="error"
+              title="比对失败"
+              subTitle={compareError}
+              extra={
+                <Button type="primary" loading={comparing} onClick={triggerCompare}>
+                  重新比对
+                </Button>
+              }
+            />
+          ) : (
+            <div style={{ textAlign: 'center', padding: 48 }}>
+              <Spin size="large" />
+              <Typography.Paragraph style={{ marginTop: 16 }}>
+                比对中，请稍候…
+              </Typography.Paragraph>
+            </div>
+          )}
         </Card>
       )}
 
-      {task.status === 3 && recordsData?.list?.length ? (
+      {task.status === 3 && (
         <Card title="差异报告">
           <Table
             rowKey="assetNo"
-            dataSource={recordsData.list}
-            pagination={false}
+            dataSource={recordsData?.list ?? []}
+            pagination={{
+              current: recordsPage,
+              pageSize: recordsPageSize,
+              total: recordsData?.total ?? 0,
+              showSizeChanger: true,
+              onChange: (page, pageSize) => {
+                setRecordsPage(page);
+                setRecordsPageSize(pageSize);
+              },
+            }}
+            locale={{ emptyText: '暂无差异记录' }}
             columns={[
               { title: '资产编号', dataIndex: 'assetNo' },
               { title: '名称', dataIndex: 'name' },
@@ -323,7 +370,7 @@ export default function InventoryTaskDetailView({
             ]}
           />
         </Card>
-      ) : null}
+      )}
 
       {task.status === 1 && (
         <Card
@@ -343,8 +390,8 @@ export default function InventoryTaskDetailView({
         >
           {expectedLoading || draftsLoading || !rowsReady ? (
             <Skeleton active paragraph={{ rows: 10 }} />
-          ) : !expectedData?.list?.length ? (
-            <Empty description="暂无应盘资产" />
+          ) : !hasSpreadsheetRows ? (
+            <Empty description="暂无应盘资产，可添加盘盈行后提交" />
           ) : (
             <Suspense fallback={<Skeleton active paragraph={{ rows: 10 }} />}>
               <InventorySpreadsheet

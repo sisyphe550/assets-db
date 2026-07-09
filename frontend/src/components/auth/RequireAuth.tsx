@@ -1,5 +1,5 @@
 import { Navigate } from 'react-router-dom';
-import { Spin, Result } from 'antd';
+import { Button, Result, Spin } from 'antd';
 import { useAppSelector } from '@/store/hooks';
 import { selectCurrentUser, selectIsAuthenticated } from '@/store/slices/authSlice';
 import { useGetMeQuery } from '@/store/api/authApi';
@@ -13,7 +13,7 @@ interface RequireAuthProps {
 export default function RequireAuth({ minRole, children }: RequireAuthProps) {
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const user = useAppSelector(selectCurrentUser);
-  const { isLoading, isError } = useGetMeQuery(undefined, {
+  const { isLoading, isError, refetch } = useGetMeQuery(undefined, {
     skip: !isAuthenticated,
   });
 
@@ -29,6 +29,21 @@ export default function RequireAuth({ minRole, children }: RequireAuthProps) {
     return <Navigate to="/login" replace />;
   }
 
+  if (isError && user) {
+    return (
+      <Result
+        status="error"
+        title="无法验证登录状态"
+        subTitle="请重试或重新登录"
+        extra={
+          <Button type="primary" onClick={() => refetch()}>
+            重试
+          </Button>
+        }
+      />
+    );
+  }
+
   if (user && user.status === 0) {
     return (
       <Result
@@ -39,7 +54,7 @@ export default function RequireAuth({ minRole, children }: RequireAuthProps) {
     );
   }
 
-  if (user && user.roleLevel > minRole) {
+  if (user && user.roleLevel !== minRole) {
     return <Navigate to={ROLE_HOME[user.roleLevel]} replace />;
   }
 

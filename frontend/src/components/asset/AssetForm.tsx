@@ -81,7 +81,7 @@ export default function AssetForm({
       name: values.name,
       category: values.category,
       price: values.price,
-      purchaseTime: values.purchaseTime.toISOString(),
+      purchaseTime: values.purchaseTime.format('YYYY-MM-DD'),
       location: values.location,
       departmentId: values.departmentId,
       isShared: values.isShared ? 1 : 0,

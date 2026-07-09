@@ -49,12 +49,22 @@ export default function ReportCharts({
   onDiffTaskChange,
 }: ReportChartsProps) {
   const [taskId, setTaskId] = useState<number | undefined>();
+  const [diffRecordsPage, setDiffRecordsPage] = useState(1);
+  const [diffRecordsPageSize, setDiffRecordsPageSize] = useState(50);
 
   useEffect(() => {
     onDiffTaskChange?.(taskId);
   }, [taskId, onDiffTaskChange]);
+
+  useEffect(() => {
+    setDiffRecordsPage(1);
+  }, [taskId]);
+
+  const deptQueryParams =
+    restrictToSubtree && departmentId ? { departmentId } : undefined;
   const { data: deptTree } = useGetDeptTreeQuery();
-  const { data: deptData, isLoading: deptLoading, isError: deptError } = useGetAssetsByDeptQuery();
+  const { data: deptData, isLoading: deptLoading, isError: deptError } =
+    useGetAssetsByDeptQuery(deptQueryParams);
   const { data: categoryData, isLoading: categoryLoading } = useGetAssetsByCategoryQuery(
     restrictToSubtree && departmentId ? { departmentId } : undefined,
   );
@@ -63,7 +73,7 @@ export default function ReportCharts({
     skip: !taskId || activeTab !== 'diff',
   });
   const { data: recordsData, isLoading: recordsLoading } = useGetRecordsQuery(
-    { taskId: taskId!, page: 1, pageSize: 500 },
+    { taskId: taskId!, page: diffRecordsPage, pageSize: diffRecordsPageSize },
     { skip: !taskId || activeTab !== 'diff' },
   );
 
@@ -93,10 +103,7 @@ export default function ReportCharts({
 
   const categoryItems: CategoryStatItem[] = categoryData?.items ?? [];
 
-  const diffRecords = useMemo(
-    () => (recordsData?.list ?? []).filter((r) => r.diffStatus === 2 || r.diffStatus === 3),
-    [recordsData?.list],
-  );
+  const diffRecords = recordsData?.list ?? [];
 
   const deptColumns: ProColumns<DeptStatItem>[] = [
     { title: '部门', dataIndex: 'departmentName', width: 180 },
@@ -272,11 +279,20 @@ export default function ReportCharts({
                   rowKey="assetNo"
                   search={false}
                   options={false}
-                  pagination={false}
                   loading={recordsLoading}
                   dataSource={diffRecords}
                   columns={diffRecordColumns}
                   scroll={{ x: 720 }}
+                  pagination={{
+                    current: diffRecordsPage,
+                    pageSize: diffRecordsPageSize,
+                    total: recordsData?.total ?? 0,
+                    showSizeChanger: true,
+                    onChange: (page, pageSize) => {
+                      setDiffRecordsPage(page);
+                      setDiffRecordsPageSize(pageSize);
+                    },
+                  }}
                 />
               </Card>
             </>

@@ -33,44 +33,73 @@ func NewReportHandler(pg, reportDB, mysql *sql.DB, rdb *redis.Client, exportDir 
 
 // GET /report/assets/by-dept
 func (h *ReportHandler) AssetsByDept(w http.ResponseWriter, r *http.Request) {
+	deptIDs := h.resolveDeptFilterIDs(r)
+
 	rows, err := h.PG.QueryContext(r.Context(),
 		`SELECT department_id, SUM(total_count), SUM(in_stock_count), SUM(in_use_count), SUM(total_value)
 		 FROM rpt_asset_daily_snapshot WHERE snapshot_date = CURRENT_DATE
 		 GROUP BY department_id ORDER BY department_id`)
 	if err != nil {
-		// 快照表可能无数据，从 MySQL 实时查询
-		h.assetsByDeptLive(w, r)
+		h.assetsByDeptLive(w, r, deptIDs)
 		return
 	}
 	defer rows.Close()
 
-	type item struct {
+	type deptItem struct {
 		DeptID     int64   `json:"departmentId"`
 		TotalCount int     `json:"totalCount"`
 		InStock    int     `json:"inStockCount"`
 		InUse      int     `json:"inUseCount"`
 		TotalValue float64 `json:"totalValue"`
 	}
-	var items []item
+	var items []deptItem
 	for rows.Next() {
-		var it item
+		var it deptItem
 		if err := rows.Scan(&it.DeptID, &it.TotalCount, &it.InStock, &it.InUse, &it.TotalValue); err != nil {
 			continue
 		}
 		items = append(items, it)
 	}
 	if len(items) == 0 {
-		h.assetsByDeptLive(w, r)
+		h.assetsByDeptLive(w, r, deptIDs)
 		return
+	}
+	if len(deptIDs) > 0 {
+		allowed := map[int64]bool{}
+		for _, id := range deptIDs {
+			allowed[id] = true
+		}
+		filtered := items[:0]
+		for _, it := range items {
+			if allowed[it.DeptID] {
+				filtered = append(filtered, it)
+			}
+		}
+		items = filtered
 	}
 	writeOK(w, map[string]any{"items": items})
 }
 
-func (h *ReportHandler) assetsByDeptLive(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.MySQL.QueryContext(r.Context(),
-		`SELECT department_id, COUNT(*), SUM(CASE WHEN status=1 THEN 1 ELSE 0 END),
+func (h *ReportHandler) assetsByDeptLive(w http.ResponseWriter, r *http.Request, deptIDs []int64) {
+	if len(deptIDs) == 0 {
+		deptIDs = h.resolveDeptFilterIDs(r)
+	}
+
+	query := `SELECT department_id, COUNT(*), SUM(CASE WHEN status=1 THEN 1 ELSE 0 END),
 		        SUM(CASE WHEN status=2 THEN 1 ELSE 0 END), SUM(price)
-		 FROM asset_ledger WHERE deleted_at IS NULL GROUP BY department_id`)
+		 FROM asset_ledger WHERE deleted_at IS NULL`
+	args := []any{}
+	if len(deptIDs) > 0 {
+		ph := make([]string, len(deptIDs))
+		for i, id := range deptIDs {
+			ph[i] = "?"
+			args = append(args, id)
+		}
+		query += ` AND department_id IN (` + strings.Join(ph, ",") + `)`
+	}
+	query += ` GROUP BY department_id`
+
+	rows, err := h.MySQL.QueryContext(r.Context(), query, args...)
 	if err != nil {
 		writeErr(w, errx.ErrInternal)
 		return
@@ -91,6 +120,22 @@ func (h *ReportHandler) assetsByDeptLive(w http.ResponseWriter, r *http.Request)
 		items = append(items, it)
 	}
 	writeOK(w, map[string]any{"items": items})
+}
+
+func (h *ReportHandler) resolveDeptFilterIDs(r *http.Request) []int64 {
+	roleLevel, _ := middleware.GetRoleLevel(r.Context())
+	userDeptID, _ := middleware.GetDeptID(r.Context())
+
+	if deptFilter := r.URL.Query().Get("departmentId"); deptFilter != "" {
+		id, _ := strconv.ParseInt(deptFilter, 10, 64)
+		if id > 0 {
+			return h.deptSubtreeIDs(r.Context(), id)
+		}
+	}
+	if roleLevel == 2 {
+		return h.deptSubtreeIDs(r.Context(), userDeptID)
+	}
+	return nil
 }
 
 // GET /report/assets/by-category

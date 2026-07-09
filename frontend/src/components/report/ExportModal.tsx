@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, Progress, Typography, message } from 'antd';
 import {
   useCreateExportMutation,
@@ -24,16 +24,20 @@ interface ExportModalProps {
 export default function ExportModal({ open, onClose, exportType, params }: ExportModalProps) {
   const [jobId, setJobId] = useState<number | null>(null);
   const [polling, setPolling] = useState(false);
+  const downloadedJobIdRef = useRef<number | null>(null);
   const [createExport, { isLoading: creating }] = useCreateExportMutation();
   const { data: job, isFetching } = useGetExportStatusQuery(jobId!, {
     skip: jobId === null,
     pollingInterval: polling ? 2000 : 0,
+    refetchOnFocus: false,
+    refetchOnReconnect: false,
   });
 
   useEffect(() => {
     if (!open) {
       setJobId(null);
       setPolling(false);
+      downloadedJobIdRef.current = null;
       return;
     }
     const start = async () => {
@@ -57,11 +61,11 @@ export default function ExportModal({ open, onClose, exportType, params }: Expor
   }, [job?.status]);
 
   useEffect(() => {
-    if (!job || job.status !== 2) return;
-    const url = job.downloadUrl;
-    if (!url) return;
-    void downloadWithAuth(url).catch((err: Error) => message.error(err.message));
-  }, [job]);
+    if (!job || job.status !== 2 || !job.downloadUrl) return;
+    if (downloadedJobIdRef.current === job.jobId) return;
+    downloadedJobIdRef.current = job.jobId;
+    void downloadWithAuth(job.downloadUrl).catch((err: Error) => message.error(err.message));
+  }, [job?.jobId, job?.status, job?.downloadUrl]);
 
   const status = job?.status ?? (creating ? 0 : undefined);
   const percent =

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Card, Select, Space, Typography } from 'antd';
+import { Button, Card, Select, Space, Typography, message } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useAppSelector } from '@/store/hooks';
 import { selectCurrentUser } from '@/store/slices/authSlice';
@@ -26,6 +26,15 @@ export default function ReportView({ roleLevel }: ReportViewProps) {
   const activeExportType = tab === 'diff' && diffTaskId ? 'inventory_diff' : exportType;
   const exportParams =
     tab === 'diff' && diffTaskId ? { taskId: diffTaskId } : undefined;
+  const canExport = tab !== 'diff' || !!diffTaskId;
+
+  const handleExportClick = () => {
+    if (!canExport) {
+      message.warning('请先在「盘点差异」Tab 中选择盘点任务');
+      return;
+    }
+    setExportOpen(true);
+  };
 
   return (
     <Card>
@@ -42,7 +51,11 @@ export default function ReportView({ roleLevel }: ReportViewProps) {
               onChange={setExportType}
             />
           ) : null}
-          <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
+          <Button
+            icon={<DownloadOutlined />}
+            disabled={!canExport}
+            onClick={handleExportClick}
+          >
             导出 CSV
           </Button>
         </Space>

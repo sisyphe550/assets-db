@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Button, Card, Input, Modal, Result, Space, Switch, Tag, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { ProTable, type ProColumns } from '@ant-design/pro-components';
 import type { UserListItem } from '@/types/api';
 import {
   useForceLogoutMutation,
+  useGetCollegeSubtreeQuery,
   useListUsersQuery,
   useUpdateUserStatusMutation,
 } from '@/store/api/userApi';
@@ -24,6 +25,10 @@ export default function UserTable({ roleLevel = 1, restrictDeptId }: UserTablePr
   const [createOpen, setCreateOpen] = useState(false);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
 
+  const { data: subtree } = useGetCollegeSubtreeQuery(undefined, {
+    skip: roleLevel !== 2 || !restrictDeptId,
+  });
+
   const { data, isLoading, isError, refetch } = useListUsersQuery({
     page,
     pageSize,
@@ -31,6 +36,22 @@ export default function UserTable({ roleLevel = 1, restrictDeptId }: UserTablePr
   });
   const [updateStatus] = useUpdateUserStatusMutation();
   const [forceLogout, { isLoading: forcing }] = useForceLogoutMutation();
+
+  const allowedDeptIds = useMemo(() => {
+    if (roleLevel !== 2 || !subtree?.deptIds?.length) return null;
+    return new Set(subtree.deptIds);
+  }, [roleLevel, subtree?.deptIds]);
+
+  const tableData = useMemo(() => {
+    const list = data?.list ?? [];
+    if (!allowedDeptIds) return list;
+    return list.filter((u) => allowedDeptIds.has(u.departmentId));
+  }, [data?.list, allowedDeptIds]);
+
+  const isUserInScope = useCallback(
+    (row: UserListItem) => !allowedDeptIds || allowedDeptIds.has(row.departmentId),
+    [allowedDeptIds],
+  );
 
   const columns: ProColumns<UserListItem>[] = useMemo(
     () => [
@@ -58,6 +79,7 @@ export default function UserTable({ roleLevel = 1, restrictDeptId }: UserTablePr
             checked={r.status === 1}
             checkedChildren="启用"
             unCheckedChildren="禁用"
+            disabled={!isUserInScope(r)}
             loading={updatingId === r.id}
             onChange={async (checked) => {
               setUpdatingId(r.id);
@@ -84,7 +106,7 @@ export default function UserTable({ roleLevel = 1, restrictDeptId }: UserTablePr
           <Button
             type="link"
             danger
-            disabled={forcing}
+            disabled={forcing || !isUserInScope(r)}
             onClick={() => {
               Modal.confirm({
                 title: '强制下线',
@@ -108,7 +130,7 @@ export default function UserTable({ roleLevel = 1, restrictDeptId }: UserTablePr
         ),
       },
     ],
-    [forceLogout, forcing, updateStatus, updatingId],
+    [forceLogout, forcing, updateStatus, updatingId, isUserInScope],
   );
 
   const onSearch = () => {
@@ -159,7 +181,7 @@ export default function UserTable({ roleLevel = 1, restrictDeptId }: UserTablePr
           search={false}
           options={false}
           loading={isLoading}
-          dataSource={data?.list ?? []}
+          dataSource={tableData}
           columns={columns}
           pagination={{
             current: page,

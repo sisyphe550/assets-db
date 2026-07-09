@@ -15,8 +15,11 @@ export const reportApi = createApi({
   baseQuery: baseQueryWithReauth,
   tagTypes: ['Report'],
   endpoints: (builder) => ({
-    getAssetsByDept: builder.query<DeptStatResponse, void>({
-      query: () => '/report/assets/by-dept',
+    getAssetsByDept: builder.query<DeptStatResponse, { departmentId?: number } | void>({
+      query: (params) => ({
+        url: '/report/assets/by-dept',
+        params: params ?? {},
+      }),
       transformResponse: (response: ApiResponse<DeptStatResponse>) => unwrapApiResponse(response),
       providesTags: [{ type: 'Report', id: 'BY_DEPT' }],
     }),
