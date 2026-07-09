@@ -4,6 +4,7 @@ package logic
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"github.com/sisyphus550/assets-db/backend/pkg/errx"
 	"github.com/sisyphus550/assets-db/backend/service/asset/model"
@@ -74,16 +75,26 @@ func DedupEvent(ctx context.Context, db *sql.DB, requestID int64, eventType stri
 	return false, nil
 }
 
-// CheckAssetScope 校验资产是否在盘点 scope 内
-func CheckAssetScope(ctx context.Context, db *sql.DB, assetNo string, scopeDeptID int64) (bool, error) {
+// CheckAssetScope 校验资产是否在盘点 scope 部门子树内
+func CheckAssetScope(ctx context.Context, db *sql.DB, assetNo string, scopeDeptIDs []int64) (bool, error) {
+	if strings.HasPrefix(assetNo, "UNKNOWN-") {
+		return true, nil
+	}
 	var deptID int64
 	err := db.QueryRowContext(ctx,
 		`SELECT department_id FROM asset_ledger WHERE asset_no=? AND deleted_at IS NULL`, assetNo).Scan(&deptID)
 	if err == sql.ErrNoRows {
 		return true, nil // 未知 asset_no → 可能是盘盈，允许提交
 	}
-	if err != nil { return false, err }
-	return deptID == scopeDeptID, nil
+	if err != nil {
+		return false, err
+	}
+	for _, id := range scopeDeptIDs {
+		if id == deptID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func isMySQLDup(err error) bool {

@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"github.com/sisyphus550/assets-db/backend/pkg/errx"
 	"github.com/sisyphus550/assets-db/backend/service/asset/model"
@@ -111,22 +112,26 @@ func isMySQLDup2(err error) bool {
 	return contains(msg, "Duplicate entry") || contains(msg, "1062")
 }
 
-// CheckAssetScope 校验资产是否在盘点 scope 内
-func CheckAssetScope(ctx context.Context, db *sql.DB, assetNo string, scopeDeptID int64) (bool, error) {
-	// 按 asset_no 查资产，再校验 department_id 是否匹配
-	// 简化版: 直接查 asset_ledger
+// CheckAssetScope 校验资产是否在盘点 scope 部门子树内
+func CheckAssetScope(ctx context.Context, db *sql.DB, assetNo string, scopeDeptIDs []int64) (bool, error) {
+	if strings.HasPrefix(assetNo, "UNKNOWN-") {
+		return true, nil
+	}
 	var deptID int64
 	err := db.QueryRowContext(ctx,
 		`SELECT department_id FROM asset_ledger WHERE asset_no=? AND deleted_at IS NULL`, assetNo).Scan(&deptID)
 	if err == sql.ErrNoRows {
-		return true, nil // 未知 asset_no → 可能是盘盈，允许
+		return true, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	// 判断是否在 scope 子树内：此处简化，由调用方传入 scope 的全部 deptIDs
-	// v1 简化：只要 department_id != 0 就认为在 scope 内
-	return deptID == scopeDeptID || true, nil
+	for _, id := range scopeDeptIDs {
+		if id == deptID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func contains(s, sub string) bool {

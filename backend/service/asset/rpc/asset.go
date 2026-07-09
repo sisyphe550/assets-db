@@ -66,11 +66,16 @@ func main() {
 
 	mux.HandleFunc("/asset.rpc/CheckAssetScope", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			AssetNo     string `json:"assetNo"`
-			ScopeDeptID int64  `json:"scopeDeptId"`
+			AssetNo       string  `json:"assetNo"`
+			ScopeDeptID   int64   `json:"scopeDeptId"`
+			ScopeDeptIDs  []int64 `json:"scopeDeptIds"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
-		inScope, err := logic.CheckAssetScope(r.Context(), db, req.AssetNo, req.ScopeDeptID)
+		scopeIDs := req.ScopeDeptIDs
+		if len(scopeIDs) == 0 && req.ScopeDeptID != 0 {
+			scopeIDs = []int64{req.ScopeDeptID}
+		}
+		inScope, err := logic.CheckAssetScope(r.Context(), db, req.AssetNo, scopeIDs)
 		if err != nil {
 			rpcOK(w, map[string]any{"inScope": false})
 			return

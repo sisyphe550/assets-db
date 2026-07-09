@@ -36,7 +36,27 @@ type InvHandler struct {
 }
 
 func NewInvHandler(db *sql.DB, draftCol *mongo.Collection, rdb *redis.Client, assetRPC string) *InvHandler {
-	return &InvHandler{DB: db, DraftCol: draftCol, RDB: rdb, AssetRPC: assetRPC}
+	h := &InvHandler{DB: db, DraftCol: draftCol, RDB: rdb, AssetRPC: assetRPC}
+	if draftCol != nil {
+		ensureDraftIndexes(context.Background(), draftCol)
+	}
+	return h
+}
+
+func ensureDraftIndexes(ctx context.Context, col *mongo.Collection) {
+	idx := col.Indexes()
+	_, _ = idx.DropOne(ctx, "uk_task_asset")
+	_, err := idx.CreateOne(ctx, mongo.IndexModel{
+		Keys: bson.D{
+			{Key: "task_id", Value: 1},
+			{Key: "asset_no", Value: 1},
+			{Key: "operator_id", Value: 1},
+		},
+		Options: options.Index().SetUnique(true).SetName("uk_task_asset_operator"),
+	})
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
+		log.Printf("WARNING: ensure draft index: %v", err)
+	}
 }
 
 // POST /inventory/tasks
@@ -128,7 +148,7 @@ func (h *InvHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	for i, t := range list {
 		assignees, _ := im.GetAssigneeIDs(r.Context(), t.ID)
 		expected := h.countExpectedAssets(r, t.ScopeDeptID)
-		submitted := h.countSubmittedDrafts(r.Context(), t.ID)
+		submitted := h.countSubmittedDrafts(r.Context(), t.ID, uid, roleLevel == 3)
 		items[i] = taskToMap(t, assignees, expected, submitted)
 	}
 	writeOK(w, map[string]any{"list": items, "page": page, "pageSize": pageSize, "total": total})
@@ -175,7 +195,7 @@ func (h *InvHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 
 	assignees, _ := im.GetAssigneeIDs(r.Context(), taskID)
 	expected := h.countExpectedAssets(r, task.ScopeDeptID)
-	submitted := h.countSubmittedDrafts(r.Context(), task.ID)
+	submitted := h.countSubmittedDrafts(r.Context(), task.ID, uid, roleLevel == 3)
 	writeOK(w, taskToMap(*task, assignees, expected, submitted))
 }
 
@@ -233,11 +253,15 @@ func (h *InvHandler) countExpectedAssets(r *http.Request, scopeDeptID int64) int
 	return len(result.Assets)
 }
 
-func (h *InvHandler) countSubmittedDrafts(ctx context.Context, taskID int64) int {
+func (h *InvHandler) countSubmittedDrafts(ctx context.Context, taskID int64, operatorID int64, perOperator bool) int {
 	if h.DraftCol == nil {
 		return 0
 	}
-	count, err := h.DraftCol.CountDocuments(ctx, bson.M{"task_id": taskID})
+	filter := bson.M{"task_id": taskID}
+	if perOperator {
+		filter["operator_id"] = operatorID
+	}
+	count, err := h.DraftCol.CountDocuments(ctx, filter)
 	if err != nil {
 		return 0
 	}
@@ -300,7 +324,7 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 
 	for _, item := range req.Items {
 		// 1. Redis 分布式锁
-		lockKey := "fams:lock:inventory:" + item.AssetNo
+		lockKey := fmt.Sprintf("fams:lock:inventory:%d:%s:%d", taskID, item.AssetNo, uid)
 		lockOwner := strconv.FormatInt(uid, 10)
 		if h.RDB != nil {
 			ok, lockErr := redislock.TryLock(r.Context(), h.RDB, lockKey, lockOwner, 30*time.Second)
@@ -336,7 +360,7 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 		// 3. MongoDB Upsert with CAS
 		ctx := r.Context()
 		now := time.Now()
-		filter := bson.M{"task_id": taskID, "asset_no": item.AssetNo}
+		filter := bson.M{"task_id": taskID, "asset_no": item.AssetNo, "operator_id": uid}
 
 		casMode := false
 		// CAS 版本检查
@@ -405,11 +429,15 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// checkAssetInScope 调用 asset-rpc 校验资产在 scope 内
+// checkAssetInScope 调用 asset-rpc 校验资产在 scope 子树内
 func (h *InvHandler) checkAssetInScope(ctx context.Context, assetNo string, scopeDeptID int64) (bool, error) {
+	scopeIDs := h.deptSubtreeIDs(ctx, scopeDeptID)
+	if len(scopeIDs) == 0 {
+		scopeIDs = []int64{scopeDeptID}
+	}
 	body, _ := json.Marshal(map[string]any{
-		"assetNo":      assetNo,
-		"scopeDeptId":  scopeDeptID,
+		"assetNo":        assetNo,
+		"scopeDeptIds":   scopeIDs,
 	})
 	resp, err := http.Post(h.AssetRPC+"/asset.rpc/CheckAssetScope", "application/json", bytes.NewReader(body))
 	if err != nil {

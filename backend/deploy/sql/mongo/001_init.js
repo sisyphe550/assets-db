@@ -9,10 +9,10 @@ db = db.getSiblingDB("fams_inventory");
 // ---- 创建盘点草稿集合 ----
 db.createCollection("inventory_draft");
 
-// ---- 复合唯一索引：同一任务同一资产编号仅一条草稿 ----
+// ---- 复合唯一索引：同一任务同一资产同一操作员仅一条草稿 ----
 db.inventory_draft.createIndex(
-    { task_id: 1, asset_no: 1 },
-    { unique: true, name: "uk_task_asset" }
+    { task_id: 1, asset_no: 1, operator_id: 1 },
+    { unique: true, name: "uk_task_asset_operator" }
 );
 
 // ---- 查询索引：按任务 + 更新时间 ----
