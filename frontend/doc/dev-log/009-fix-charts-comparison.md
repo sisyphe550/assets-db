@@ -20,3 +20,8 @@
 ### 前端
 - `ChartBox` 约束图表容器；Pie/Column 加 `autoFit`，关闭错误 label
 - `status=2` 时自动调用 `compareTask` + 轮询至完成
+
+## 补充（Tab 切换偏移）
+
+- Tabs 隐藏面板时 G2 `autoFit` 在 `display:none` 下宽度为 0，第二次切换错位
+- 修复：`destroyInactiveTabPane` + `ChartBox` ResizeObserver 实测宽度 + 去掉 `autoFit`

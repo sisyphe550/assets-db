@@ -34,6 +34,12 @@ interface ReportChartsProps {
   restrictToSubtree?: boolean;
 }
 
+const chartFallback = (
+  <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <Spin />
+  </div>
+);
+
 export default function ReportCharts({
   activeTab,
   onTabChange,
@@ -121,12 +127,6 @@ export default function ReportCharts({
     },
   ];
 
-  const chartFallback = (
-    <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <Spin />
-    </div>
-  );
-
   const deptChartData = deptItems.map((item) => ({
     dept: item.departmentName ?? `#${item.departmentId}`,
     count: item.totalCount,
@@ -151,19 +151,22 @@ export default function ReportCharts({
                 <Empty description="暂无数据" />
               ) : (
                 <ChartBox height={300}>
-                  <Suspense fallback={chartFallback}>
-                    <Column
-                      data={deptChartData}
-                      xField="dept"
-                      yField="count"
-                      height={300}
-                      autoFit
-                      color="#1677FF"
-                      animation={{ appear: { animation: 'fade-in', duration: 500 } }}
-                      legend={false}
-                      axis={{ x: { labelAutoRotate: true } }}
-                    />
-                  </Suspense>
+                  {(width) => (
+                    <Suspense fallback={chartFallback}>
+                      <Column
+                        key={`dept-col-${width}`}
+                        width={width}
+                        height={300}
+                        data={deptChartData}
+                        xField="dept"
+                        yField="count"
+                        color="#1677FF"
+                        animation={{ appear: { animation: 'fade-in', duration: 500 } }}
+                        legend={false}
+                        axis={{ x: { labelAutoRotate: true } }}
+                      />
+                    </Suspense>
+                  )}
                 </ChartBox>
               )}
             </Card>
@@ -196,19 +199,22 @@ export default function ReportCharts({
                 <Empty description="暂无数据" />
               ) : (
                 <ChartBox height={300}>
-                  <Suspense fallback={chartFallback}>
-                    <Pie
-                      data={categoryChartData}
-                      angleField="value"
-                      colorField="type"
-                      height={300}
-                      autoFit
-                      color={CHART_COLORS}
-                      animation={{ appear: { animation: 'fade-in', duration: 500 } }}
-                      legend={{ position: 'bottom' }}
-                      label={false}
-                    />
-                  </Suspense>
+                  {(width) => (
+                    <Suspense fallback={chartFallback}>
+                      <Pie
+                        key={`cat-pie-${width}`}
+                        width={width}
+                        height={300}
+                        data={categoryChartData}
+                        angleField="value"
+                        colorField="type"
+                        color={CHART_COLORS}
+                        animation={{ appear: { animation: 'fade-in', duration: 500 } }}
+                        legend={{ position: 'bottom' }}
+                        label={false}
+                      />
+                    </Suspense>
+                  )}
                 </ChartBox>
               )}
             </Card>
@@ -278,6 +284,7 @@ export default function ReportCharts({
     <Tabs
       activeKey={activeTab}
       onChange={(key) => onTabChange(key as ReportTab)}
+      destroyInactiveTabPane
       items={tabItems}
     />
   );

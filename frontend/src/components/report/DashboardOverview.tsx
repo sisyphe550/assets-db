@@ -188,18 +188,21 @@ export default function DashboardOverview({
               <Empty description="暂无数据" />
             ) : (
               <ChartBox height={280}>
-                <Suspense fallback={chartFallback}>
-                  <Pie
-                    data={pieData}
-                    angleField="value"
-                    colorField="type"
-                    height={280}
-                    autoFit
-                    color={CHART_COLORS}
-                    legend={{ position: 'bottom' }}
-                    label={false}
-                  />
-                </Suspense>
+                {(width) => (
+                  <Suspense fallback={chartFallback}>
+                    <Pie
+                      key={`dash-pie-${width}`}
+                      width={width}
+                      height={280}
+                      data={pieData}
+                      angleField="value"
+                      colorField="type"
+                      color={CHART_COLORS}
+                      legend={{ position: 'bottom' }}
+                      label={false}
+                    />
+                  </Suspense>
+                )}
               </ChartBox>
             )}
           </Card>
