@@ -166,6 +166,12 @@ export interface ExpectedAsset {
   expectedUpdatedAt?: string | null;
 }
 
+export interface InventoryDraft {
+  assetNo: string;
+  modifiedCells: Record<string, string>;
+  updatedAt: string;
+}
+
 export interface SubmitItem {
   assetNo: string;
   modifiedCells: Record<string, string>;

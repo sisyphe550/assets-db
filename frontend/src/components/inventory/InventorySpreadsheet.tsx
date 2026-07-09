@@ -23,6 +23,26 @@ export default function InventorySpreadsheet({
     onChange(rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
   };
 
+  const surplusInput = (
+    value: string,
+    record: SpreadsheetRow,
+    field: keyof Pick<SpreadsheetRow, 'assetNo' | 'name' | 'bookLocation'>,
+    placeholder?: string,
+  ) => (
+    <Input
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => {
+        const next = e.target.value;
+        if (field === 'name') {
+          updateRow(record.key, { name: next, foundName: next });
+          return;
+        }
+        updateRow(record.key, { [field]: next });
+      }}
+    />
+  );
+
   return (
     <>
       <style>{`
@@ -37,9 +57,39 @@ export default function InventorySpreadsheet({
         scroll={{ x: 900, y: 480 }}
         rowClassName={rowClassName}
         columns={[
-          { title: '资产编号', dataIndex: 'assetNo', width: 160 },
-          { title: '资产名称', dataIndex: 'name', width: 140 },
-          { title: '账面位置', dataIndex: 'bookLocation', width: 160 },
+          {
+            title: '资产编号',
+            dataIndex: 'assetNo',
+            width: 160,
+            render: (v: string, record: SpreadsheetRow) =>
+              readOnly || !record.isSurplus ? (
+                v
+              ) : (
+                surplusInput(v, record, 'assetNo', '未登记编号')
+              ),
+          },
+          {
+            title: '资产名称',
+            dataIndex: 'name',
+            width: 140,
+            render: (v: string, record: SpreadsheetRow) =>
+              readOnly || !record.isSurplus ? (
+                v || '-'
+              ) : (
+                surplusInput(v, record, 'name', '盘盈资产名称')
+              ),
+          },
+          {
+            title: '账面位置',
+            dataIndex: 'bookLocation',
+            width: 160,
+            render: (v: string, record: SpreadsheetRow) =>
+              readOnly || !record.isSurplus ? (
+                v
+              ) : (
+                surplusInput(v, record, 'bookLocation', '账面无记录可填「-」')
+              ),
+          },
           {
             title: '实际位置',
             dataIndex: 'actualLocation',
@@ -65,21 +115,6 @@ export default function InventorySpreadsheet({
                 <Input
                   value={v}
                   onChange={(e) => updateRow(record.key, { notes: e.target.value })}
-                />
-              ),
-          },
-          {
-            title: '盘盈名称',
-            dataIndex: 'foundName',
-            width: 160,
-            render: (v: string, record: SpreadsheetRow) =>
-              readOnly || !record.isSurplus ? (
-                v || '-'
-              ) : (
-                <Input
-                  value={v}
-                  placeholder="未登记资产名称"
-                  onChange={(e) => updateRow(record.key, { foundName: e.target.value })}
                 />
               ),
           },

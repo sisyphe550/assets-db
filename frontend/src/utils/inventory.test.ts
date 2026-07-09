@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   applySubmitResult,
+  buildRowsFromExpected,
   buildSubmitItems,
   type SpreadsheetRow,
 } from '@/utils/inventory';
@@ -33,16 +34,49 @@ describe('inventory utils', () => {
     expect(buildSubmitItems([unchanged])).toHaveLength(0);
   });
 
-  it('includes surplus rows even without location edit', () => {
+  it('includes surplus rows with name or location', () => {
     const surplus: SpreadsheetRow = {
       ...baseRow,
       assetNo: 'UNKNOWN-1',
       key: 'UNKNOWN-1',
       isSurplus: true,
+      name: '未登记投影仪',
+      foundName: '未登记投影仪',
       actualLocation: '',
-      bookLocation: '-',
+      bookLocation: '',
     };
     expect(buildSubmitItems([surplus])).toHaveLength(1);
+    expect(buildSubmitItems([surplus])[0].modifiedCells.found_name).toBe('未登记投影仪');
+  });
+
+  it('skips empty surplus rows', () => {
+    const surplus: SpreadsheetRow = {
+      ...baseRow,
+      assetNo: 'UNKNOWN-1',
+      key: 'UNKNOWN-1',
+      isSurplus: true,
+      name: '',
+      actualLocation: '',
+      bookLocation: '',
+      notes: '',
+    };
+    expect(buildSubmitItems([surplus])).toHaveLength(0);
+  });
+
+  it('submits surplus book_location in modified cells', () => {
+    const surplus: SpreadsheetRow = {
+      ...baseRow,
+      assetNo: 'CUSTOM-001',
+      key: 'CUSTOM-001',
+      isSurplus: true,
+      name: '备用显示器',
+      foundName: '备用显示器',
+      bookLocation: '无',
+      actualLocation: '仓库A',
+    };
+    const items = buildSubmitItems([surplus]);
+    expect(items[0].modifiedCells.book_location).toBe('无');
+    expect(items[0].assetNo).toBe('CUSTOM-001');
   });
 
   it('handles null submit result arrays from API', () => {
@@ -68,5 +102,60 @@ describe('inventory utils', () => {
       failures: [],
     });
     expect(conflict[0].rowState).toBe('conflict');
+  });
+
+  it('merges expected assets with saved drafts', () => {
+    const rows = buildRowsFromExpected(
+      [
+        {
+          assetId: 1,
+          assetNo: 'EQUIP-2026-0001',
+          name: '激光切割机',
+          bookLocation: '101',
+        },
+      ],
+      [
+        {
+          assetNo: 'EQUIP-2026-0001',
+          modifiedCells: { actual_location: '205', temp_notes: '已搬' },
+          updatedAt: '2026-07-08T10:00:00Z',
+        },
+      ],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].actualLocation).toBe('205');
+    expect(rows[0].notes).toBe('已搬');
+    expect(rows[0].expectedUpdatedAt).toBe('2026-07-08T10:00:00Z');
+  });
+
+  it('restores surplus rows from drafts not in expected list', () => {
+    const rows = buildRowsFromExpected(
+      [
+        {
+          assetId: 1,
+          assetNo: 'EQUIP-2026-0001',
+          name: '激光切割机',
+          bookLocation: '101',
+        },
+      ],
+      [
+        {
+          assetNo: 'UNKNOWN-123',
+          modifiedCells: {
+            actual_location: '仓库',
+            found_name: '未知设备',
+            book_location: '账面无',
+            temp_notes: '盘盈',
+          },
+          updatedAt: '2026-07-08T11:00:00Z',
+        },
+      ],
+    );
+    expect(rows).toHaveLength(2);
+    const surplus = rows.find((r) => r.assetNo === 'UNKNOWN-123');
+    expect(surplus?.isSurplus).toBe(true);
+    expect(surplus?.name).toBe('未知设备');
+    expect(surplus?.actualLocation).toBe('仓库');
+    expect(surplus?.bookLocation).toBe('账面无');
   });
 });

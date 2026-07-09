@@ -20,6 +20,7 @@ import {
   useArchiveTaskMutation,
   useCompareTaskMutation,
   useGetExpectedAssetsQuery,
+  useGetDraftsQuery,
   useGetRecordsQuery,
   useGetTaskQuery,
   useSubmitRecordsMutation,
@@ -30,6 +31,7 @@ import { getApiErrorCode } from '@/utils/api';
 import { formatDateTime } from '@/utils/format';
 import {
   applySubmitResult,
+  buildRowsFromExpected,
   buildSubmitItems,
   type SpreadsheetRow,
 } from '@/utils/inventory';
@@ -60,6 +62,9 @@ export default function InventoryTaskDetailView({
     taskIdNum,
     { skip: !taskIdNum || task?.status !== 1 },
   );
+  const { data: draftsData, isLoading: draftsLoading } = useGetDraftsQuery(taskIdNum, {
+    skip: !taskIdNum || task?.status !== 1,
+  });
   const { data: recordsData } = useGetRecordsQuery(
     { taskId: taskIdNum, page: 1, pageSize: 50 },
     { skip: !taskIdNum || task?.status !== 3 },
@@ -97,22 +102,9 @@ export default function InventoryTaskDetailView({
   }, [basePath, user, task]);
 
   useEffect(() => {
-    if (expectedData?.list) {
-      setRows(
-        expectedData.list.map((item) => ({
-          key: item.assetNo,
-          assetNo: item.assetNo,
-          name: item.name,
-          bookLocation: item.bookLocation,
-          actualLocation: '',
-          notes: '',
-          foundName: '',
-          isSurplus: false,
-          expectedUpdatedAt: item.expectedUpdatedAt ?? null,
-        })),
-      );
-    }
-  }, [expectedData?.list]);
+    if (!expectedData?.list) return;
+    setRows(buildRowsFromExpected(expectedData.list, draftsData?.list ?? []));
+  }, [expectedData?.list, draftsData?.list]);
 
   const conflictMessages = useMemo(
     () => rows.filter((r) => r.rowState === 'conflict').map((r) => r.rowMessage).filter(Boolean),
@@ -122,7 +114,19 @@ export default function InventoryTaskDetailView({
   const handleSubmit = async () => {
     const items = buildSubmitItems(rows);
     if (!items.length) {
-      message.warning('请先修改实际位置、备注或添加盘盈行后再提交');
+      message.warning('请先修改实际位置、备注或填写盘盈行信息后再提交');
+      return;
+    }
+    const invalidSurplus = items.find((item) => {
+      const row = rows.find((r) => r.assetNo.trim() === item.assetNo);
+      return (
+        row?.isSurplus &&
+        !item.modifiedCells.found_name?.trim() &&
+        !item.modifiedCells.actual_location?.trim()
+      );
+    });
+    if (invalidSurplus) {
+      message.warning('盘盈行请至少填写资产名称或实际位置');
       return;
     }
     try {
@@ -134,7 +138,8 @@ export default function InventoryTaskDetailView({
       if (conflicts.length) {
         message.error(`有 ${conflicts.length} 条冲突，请检查标红行`);
       } else if (failures.length) {
-        message.warning(`有 ${failures.length} 条提交失败`);
+        const detail = failures.map((f) => f.message).join('；');
+        message.warning(`有 ${failures.length} 条提交失败：${detail}`);
       } else {
         message.success(`成功提交 ${success.length} 条`);
       }
@@ -171,7 +176,7 @@ export default function InventoryTaskDetailView({
         key: no,
         assetNo: no,
         name: '',
-        bookLocation: '-',
+        bookLocation: '',
         actualLocation: '',
         notes: '',
         foundName: '',
@@ -301,7 +306,7 @@ export default function InventoryTaskDetailView({
             )
           }
         >
-          {expectedLoading ? (
+          {expectedLoading || draftsLoading ? (
             <Skeleton active paragraph={{ rows: 10 }} />
           ) : !expectedData?.list?.length ? (
             <Empty description="暂无应盘资产" />

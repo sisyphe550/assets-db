@@ -338,11 +338,13 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 		now := time.Now()
 		filter := bson.M{"task_id": taskID, "asset_no": item.AssetNo}
 
+		casMode := false
 		// CAS 版本检查
 		if item.ExpectedUpdatedAt != nil && *item.ExpectedUpdatedAt != "" {
-			expectedTime, parseErr := time.Parse(time.RFC3339, *item.ExpectedUpdatedAt)
+			expectedTime, parseErr := parseDraftUpdatedAt(*item.ExpectedUpdatedAt)
 			if parseErr == nil {
 				filter["updated_at"] = expectedTime
+				casMode = true
 			}
 		}
 
@@ -355,8 +357,16 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 				"updated_at":     now,
 			},
 		}
-		opts := options.Update().SetUpsert(true)
-		result, mongoErr := h.DraftCol.UpdateOne(ctx, filter, update, opts)
+
+		var result *mongo.UpdateResult
+		var mongoErr error
+		if casMode {
+			// CAS 更新：禁止 upsert，避免唯一索引冲突被误报为「草稿写入失败」
+			result, mongoErr = h.DraftCol.UpdateOne(ctx, filter, update)
+		} else {
+			opts := options.Update().SetUpsert(true)
+			result, mongoErr = h.DraftCol.UpdateOne(ctx, filter, update, opts)
+		}
 
 		if h.RDB != nil { redislock.Unlock(r.Context(), h.RDB, lockKey, lockOwner) }
 
@@ -368,11 +378,18 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// CAS 冲突：filter 匹配不到文档（版本不一致）
-		if result.MatchedCount == 0 && result.UpsertedCount == 0 {
-			conflicts = append(conflicts, map[string]any{
-				"assetNo": item.AssetNo, "code": 40901,
-				"message": "数据版本冲突，请刷新后重试",
+		if casMode {
+			if result.MatchedCount == 0 {
+				conflicts = append(conflicts, map[string]any{
+					"assetNo": item.AssetNo, "code": 40901,
+					"message": "数据版本冲突，请刷新后重试",
+				})
+				continue
+			}
+		} else if result.MatchedCount == 0 && result.UpsertedCount == 0 {
+			failures = append(failures, map[string]any{
+				"assetNo": item.AssetNo, "code": 50301,
+				"message": "草稿写入失败",
 			})
 			continue
 		}
@@ -441,6 +458,7 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 					"operator_id": draft.OperatorID,
 					"location":    getCellStr(draft.ModifiedCells, "actual_location"),
 					"found_name":  getCellStr(draft.ModifiedCells, "found_name"),
+					"book_location": getCellStr(draft.ModifiedCells, "book_location"),
 				}
 			}
 		}
@@ -475,6 +493,7 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 		opID, _ := draft["operator_id"].(int64)
 		loc, _ := draft["location"].(string)
 		foundName, _ := draft["found_name"].(string)
+		bookLoc, _ := draft["book_location"].(string)
 
 		if bookAsset, ok := bookAssets[assetNo]; ok {
 			// 账面存在：正常记录
@@ -486,9 +505,10 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 			})
 		} else {
 			// 账面无此编号：盘盈候选
+			desc := formatSurplusDesc(foundName, bookLoc, loc)
 			records = append(records, model.InventoryRecord{
 				TaskID: taskID, AssetID: nil,
-				FoundAssetDesc: foundName + " @ " + loc,
+				FoundAssetDesc: desc,
 				OperatorID: &opID, IsScanned: 1,
 				ActualLocation: loc,
 			})
@@ -692,6 +712,84 @@ func recordToMap(rec model.InventoryRecord, assets map[int64]map[string]any) map
 	}
 }
 
+// GET /inventory/tasks/:id/drafts — 读取已保存草稿（师生仅自己的）
+func (h *InvHandler) Drafts(w http.ResponseWriter, r *http.Request) {
+	taskID := parseIDForAction(r.URL.Path, "/tasks/", "/drafts")
+	if taskID == 0 {
+		writeErr(w, errx.ErrInvalidParam)
+		return
+	}
+
+	roleLevel, _ := middleware.GetRoleLevel(r.Context())
+	uid, _ := middleware.GetUID(r.Context())
+	deptID, _ := middleware.GetDeptID(r.Context())
+
+	im := model.NewInvModel(h.DB)
+	task, err := im.FindTask(r.Context(), taskID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+
+	if roleLevel == 3 {
+		ok, _ := im.IsAssignee(r.Context(), taskID, uid)
+		if !ok {
+			writeErr(w, errx.ErrNotAssigned)
+			return
+		}
+	} else if roleLevel == 2 {
+		allowed := false
+		for _, id := range h.deptSubtreeIDs(r.Context(), deptID) {
+			if id == task.ScopeDeptID {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			writeErr(w, errx.ErrDeptAccessDenied)
+			return
+		}
+	}
+
+	if h.DraftCol == nil {
+		writeOK(w, map[string]any{"list": []any{}, "total": 0})
+		return
+	}
+
+	filter := bson.M{"task_id": taskID}
+	if roleLevel == 3 {
+		filter["operator_id"] = uid
+	}
+
+	cursor, err := h.DraftCol.Find(r.Context(), filter)
+	if err != nil {
+		writeErr(w, errx.ErrInternal)
+		return
+	}
+	defer cursor.Close(r.Context())
+
+	type draftDoc struct {
+		AssetNo       string         `bson:"asset_no"`
+		ModifiedCells map[string]any `bson:"modified_cells"`
+		UpdatedAt     time.Time      `bson:"updated_at"`
+	}
+
+	list := make([]map[string]any, 0)
+	for cursor.Next(r.Context()) {
+		var doc draftDoc
+		if err := cursor.Decode(&doc); err != nil {
+			continue
+		}
+		list = append(list, map[string]any{
+			"assetNo":       doc.AssetNo,
+			"modifiedCells": doc.ModifiedCells,
+			"updatedAt":     formatDraftUpdatedAt(doc.UpdatedAt),
+		})
+	}
+
+	writeOK(w, map[string]any{"list": list, "total": len(list)})
+}
+
 // GET /inventory/tasks/:id/expected-assets
 func (h *InvHandler) ExpectedAssets(w http.ResponseWriter, r *http.Request) {
 	id := parseIDForAction(r.URL.Path, "/tasks/", "/expected-assets")
@@ -777,6 +875,34 @@ func rpcAssetLocation(a map[string]any) string {
 		return v
 	}
 	return ""
+}
+
+func formatDraftUpdatedAt(t time.Time) string {
+	return t.UTC().Format("2006-01-02T15:04:05.000Z")
+}
+
+func parseDraftUpdatedAt(s string) (time.Time, error) {
+	if t, err := time.Parse("2006-01-02T15:04:05.000Z", s); err == nil {
+		return t, nil
+	}
+	return time.Parse(time.RFC3339, s)
+}
+
+func formatSurplusDesc(name, bookLoc, actualLoc string) string {
+	parts := make([]string, 0, 3)
+	if name != "" {
+		parts = append(parts, name)
+	}
+	if bookLoc != "" && bookLoc != "-" {
+		parts = append(parts, "账面:"+bookLoc)
+	}
+	if actualLoc != "" {
+		parts = append(parts, "@"+actualLoc)
+	}
+	if len(parts) == 0 {
+		return "盘盈资产"
+	}
+	return strings.Join(parts, " ")
 }
 
 func writeOK(w http.ResponseWriter, data any) {

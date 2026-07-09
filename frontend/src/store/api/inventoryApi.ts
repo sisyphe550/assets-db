@@ -3,6 +3,7 @@ import { baseQueryWithReauth } from './baseQuery';
 import type {
   CreateInventoryTaskReq,
   ExpectedAsset,
+  InventoryDraft,
   InventoryRecord,
   InventoryTask,
   SubmitItem,
@@ -19,7 +20,7 @@ export interface InventoryListParams extends ListParams {
 export const inventoryApi = createApi({
   reducerPath: 'inventoryApi',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['InventoryList', 'Inventory', 'InventoryRecords'],
+  tagTypes: ['InventoryList', 'Inventory', 'InventoryRecords', 'InventoryDrafts'],
   endpoints: (builder) => ({
     getTasks: builder.query<PaginatedData<InventoryTask>, InventoryListParams | void>({
       query: (params) => ({
@@ -66,6 +67,13 @@ export const inventoryApi = createApi({
         response: ApiResponse<{ list: ExpectedAsset[]; total: number }>,
       ) => unwrapApiResponse(response),
     }),
+    getDrafts: builder.query<{ list: InventoryDraft[]; total: number }, number>({
+      query: (id) => `/inventory/tasks/${id}/drafts`,
+      transformResponse: (
+        response: ApiResponse<{ list: InventoryDraft[]; total: number }>,
+      ) => unwrapApiResponse(response),
+      providesTags: (_r, _e, id) => [{ type: 'InventoryDrafts', id }],
+    }),
     submitRecords: builder.mutation<SubmitResult, { taskId: number; items: SubmitItem[] }>({
       query: ({ taskId, items }) => ({
         url: `/inventory/tasks/${taskId}/submit`,
@@ -76,6 +84,7 @@ export const inventoryApi = createApi({
       invalidatesTags: (_r, _e, { taskId }) => [
         { type: 'Inventory', id: taskId },
         { type: 'InventoryList', id: 'LIST' },
+        { type: 'InventoryDrafts', id: taskId },
       ],
     }),
     archiveTask: builder.mutation<
@@ -141,6 +150,7 @@ export const {
   useGetTaskQuery,
   useCreateTaskMutation,
   useGetExpectedAssetsQuery,
+  useGetDraftsQuery,
   useSubmitRecordsMutation,
   useArchiveTaskMutation,
   useCompareTaskMutation,

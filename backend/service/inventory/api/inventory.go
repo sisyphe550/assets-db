@@ -78,6 +78,8 @@ func main() {
 			}
 		} else if strings.HasSuffix(r.URL.Path, "/records") {
 			h.Records(w, r)
+		} else if strings.HasSuffix(r.URL.Path, "/drafts") {
+			h.Drafts(w, r)
 		} else if strings.Contains(r.URL.Path, "/expected-assets") {
 			h.ExpectedAssets(w, r)
 		} else if r.Method == http.MethodGet {
