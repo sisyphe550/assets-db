@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 
 	"github.com/sisyphus550/assets-db/backend/pkg/dept"
 	"github.com/sisyphus550/assets-db/backend/pkg/errx"
@@ -131,7 +133,12 @@ func (h *WorkflowHandler) List(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeOK(w, map[string]any{"list": list, "page": page, "pageSize": pageSize, "total": total})
+	names := h.lookupUserNames(r.Context(), requesterIDs(list))
+	items := make([]map[string]any, len(list))
+	for i, w := range list {
+		items[i] = workflowToMap(w, names[w.RequesterID])
+	}
+	writeOK(w, map[string]any{"list": items, "page": page, "pageSize": pageSize, "total": total})
 }
 
 func (h *WorkflowHandler) deptSubtreeIDs(ctx context.Context, rootDeptID int64) []int64 {
@@ -155,6 +162,82 @@ func (h *WorkflowHandler) deptSubtreeIDs(ctx context.Context, rootDeptID int64) 
 	return ids
 }
 
+func (h *WorkflowHandler) ensureWorkflowReadable(r *http.Request, wf *model.WorkflowRequest) error {
+	uid, _ := middleware.GetUID(r.Context())
+	roleLevel, _ := middleware.GetRoleLevel(r.Context())
+	switch roleLevel {
+	case 1:
+		return nil
+	case 2:
+		return h.ensureWorkflowInAdminSubtree(r.Context(), wf.DepartmentID)
+	case 3:
+		if wf.RequesterID == uid {
+			return nil
+		}
+		return errx.ErrForbidden
+	default:
+		return errx.ErrForbidden
+	}
+}
+
+func (h *WorkflowHandler) ensureWorkflowInAdminSubtree(ctx context.Context, departmentID int64) error {
+	adminDeptID, _ := middleware.GetDeptID(ctx)
+	for _, id := range h.deptSubtreeIDs(ctx, adminDeptID) {
+		if id == departmentID {
+			return nil
+		}
+	}
+	return errx.ErrForbidden
+}
+
+func requesterIDs(list []model.WorkflowRequest) []int64 {
+	seen := make(map[int64]struct{}, len(list))
+	var ids []int64
+	for _, w := range list {
+		if _, ok := seen[w.RequesterID]; ok {
+			continue
+		}
+		seen[w.RequesterID] = struct{}{}
+		ids = append(ids, w.RequesterID)
+	}
+	return ids
+}
+
+func (h *WorkflowHandler) lookupUserNames(ctx context.Context, ids []int64) map[int64]string {
+	names := make(map[int64]string, len(ids))
+	if len(ids) == 0 {
+		return names
+	}
+	rows, err := h.DB.QueryContext(ctx, `SELECT id, real_name FROM sys_user WHERE id = ANY($1)`, pq.Array(ids))
+	if err != nil {
+		return names
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var name string
+		if rows.Scan(&id, &name) == nil {
+			names[id] = name
+		}
+	}
+	return names
+}
+
+func workflowToMap(w model.WorkflowRequest, requesterName string) map[string]any {
+	m := map[string]any{
+		"id": w.ID, "assetId": w.AssetID, "requesterId": w.RequesterID,
+		"departmentId": w.DepartmentID, "type": w.Type,
+		"currentStage": w.CurrentStage, "status": w.Status,
+		"reason": w.Reason,
+		"createdAt": w.CreatedAt.Format(time.RFC3339),
+		"updatedAt": w.UpdatedAt.Format(time.RFC3339),
+	}
+	if requesterName != "" {
+		m["requesterName"] = requesterName
+	}
+	return m
+}
+
 // GET /workflow/requests/:id
 func (h *WorkflowHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	id := parsePathID(r.URL.Path, "/requests/")
@@ -163,8 +246,16 @@ func (h *WorkflowHandler) Detail(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	if err := h.ensureWorkflowReadable(r, wf); err != nil {
+		writeErr(w, err)
+		return
+	}
 	logs, _ := model.NewWorkflowModel(h.DB).FindLogs(r.Context(), id)
-	writeOK(w, map[string]any{"request": wf, "logs": logs})
+	names := h.lookupUserNames(r.Context(), []int64{wf.RequesterID})
+	writeOK(w, map[string]any{
+		"request": workflowToMap(*wf, names[wf.RequesterID]),
+		"logs":    logs,
+	})
 }
 
 // POST /workflow/requests/:id/approve
@@ -208,6 +299,10 @@ func (h *WorkflowHandler) Approve(w http.ResponseWriter, r *http.Request) {
 	case 1: // 院级初审
 		if roleLevel != 2 {
 			writeErr(w, errx.ErrForbidden)
+			return
+		}
+		if err := h.ensureWorkflowInAdminSubtree(r.Context(), wf.DepartmentID); err != nil {
+			writeErr(w, err)
 			return
 		}
 		if err := wm.ApproveStage1(r.Context(), id, uid, req.Comment); err != nil {
@@ -262,6 +357,12 @@ func (h *WorkflowHandler) Reject(w http.ResponseWriter, r *http.Request) {
 	if wf.CurrentStage == 1 && roleLevel != 2 {
 		writeErr(w, errx.ErrForbidden)
 		return
+	}
+	if wf.CurrentStage == 1 && roleLevel == 2 {
+		if err := h.ensureWorkflowInAdminSubtree(r.Context(), wf.DepartmentID); err != nil {
+			writeErr(w, err)
+			return
+		}
 	}
 	if wf.CurrentStage == 2 && roleLevel != 1 {
 		writeErr(w, errx.ErrForbidden)

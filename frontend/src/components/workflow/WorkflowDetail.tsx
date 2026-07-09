@@ -122,7 +122,9 @@ export default function WorkflowDetail({
             <Descriptions.Item label="当前阶段">
               <StatusTag type="workflowStage" value={request.currentStage} />
             </Descriptions.Item>
-            <Descriptions.Item label="申请人ID">{request.requesterId}</Descriptions.Item>
+            <Descriptions.Item label="申请人">
+              {request.requesterName ?? `#${request.requesterId}`}
+            </Descriptions.Item>
             <Descriptions.Item label="提交时间">
               {formatDateTime(request.createdAt)}
             </Descriptions.Item>

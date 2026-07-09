@@ -95,6 +95,7 @@ export interface WorkflowRequest {
   id: number;
   assetId: number;
   requesterId: number;
+  requesterName?: string;
   departmentId: number;
   type: 1 | 2 | 3 | 4;
   currentStage: 1 | 2 | 3;

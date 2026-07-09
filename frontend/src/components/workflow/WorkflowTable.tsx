@@ -80,9 +80,10 @@ export default function WorkflowTable({
         ellipsis: true,
       },
       {
-        title: '申请人ID',
-        dataIndex: 'requesterId',
+        title: '申请人',
+        dataIndex: 'requesterName',
         width: 100,
+        render: (_, r) => r.requesterName ?? `#${r.requesterId}`,
       },
       {
         title: '状态',

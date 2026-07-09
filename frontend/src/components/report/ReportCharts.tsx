@@ -57,7 +57,7 @@ export default function ReportCharts({
     skip: !taskId || activeTab !== 'diff',
   });
   const { data: recordsData, isLoading: recordsLoading } = useGetRecordsQuery(
-    { taskId: taskId!, page: 1, pageSize: 100 },
+    { taskId: taskId!, page: 1, pageSize: 500 },
     { skip: !taskId || activeTab !== 'diff' },
   );
 

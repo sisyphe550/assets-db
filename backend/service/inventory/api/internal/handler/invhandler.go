@@ -235,11 +235,19 @@ func (h *InvHandler) deptSubtreeIDs(ctx context.Context, rootDeptID int64) []int
 	return ids
 }
 
+func (h *InvHandler) scopeDeptIDs(ctx context.Context, rootDeptID int64) []int64 {
+	ids := h.deptSubtreeIDs(ctx, rootDeptID)
+	if len(ids) == 0 {
+		return []int64{rootDeptID}
+	}
+	return ids
+}
+
 func (h *InvHandler) countExpectedAssets(r *http.Request, scopeDeptID int64) int {
 	if h.AssetRPC == "" {
 		return 0
 	}
-	body, _ := json.Marshal(map[string]any{"deptIds": []int64{scopeDeptID}})
+	body, _ := json.Marshal(map[string]any{"deptIds": h.scopeDeptIDs(r.Context(), scopeDeptID)})
 	resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return 0
@@ -431,10 +439,7 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 
 // checkAssetInScope 调用 asset-rpc 校验资产在 scope 子树内
 func (h *InvHandler) checkAssetInScope(ctx context.Context, assetNo string, scopeDeptID int64) (bool, error) {
-	scopeIDs := h.deptSubtreeIDs(ctx, scopeDeptID)
-	if len(scopeIDs) == 0 {
-		scopeIDs = []int64{scopeDeptID}
-	}
+	scopeIDs := h.scopeDeptIDs(ctx, scopeDeptID)
 	body, _ := json.Marshal(map[string]any{
 		"assetNo":        assetNo,
 		"scopeDeptIds":   scopeIDs,
@@ -495,7 +500,7 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 	// Step 2: 从 asset-rpc 获取 scope 内所有账面资产
 	bookAssets := make(map[string]map[string]any)
 	if h.AssetRPC != "" {
-		body, _ := json.Marshal(map[string]any{"deptIds": []int64{task.ScopeDeptID}})
+		body, _ := json.Marshal(map[string]any{"deptIds": h.scopeDeptIDs(r.Context(), task.ScopeDeptID)})
 		resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
 		if err == nil {
 			defer resp.Body.Close()
@@ -636,8 +641,8 @@ func (h *InvHandler) Records(w http.ResponseWriter, r *http.Request) {
 	if pageSize < 1 {
 		pageSize = 20
 	}
-	if pageSize > 100 {
-		pageSize = 100
+	if pageSize > 500 {
+		pageSize = 500
 	}
 
 	var diffFilter *int16
@@ -689,7 +694,7 @@ func (h *InvHandler) fetchScopeAssetMap(ctx context.Context, scopeDeptID int64) 
 	if h.AssetRPC == "" {
 		return result
 	}
-	body, _ := json.Marshal(map[string]any{"deptIds": []int64{scopeDeptID}})
+	body, _ := json.Marshal(map[string]any{"deptIds": h.scopeDeptIDs(ctx, scopeDeptID)})
 	resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return result
@@ -830,7 +835,7 @@ func (h *InvHandler) ExpectedAssets(w http.ResponseWriter, r *http.Request) {
 	}
 	// 通过 asset-rpc 获取 scope 内资产列表
 	if h.AssetRPC != "" {
-		body, _ := json.Marshal(map[string]any{"deptIds": []int64{task.ScopeDeptID}})
+		body, _ := json.Marshal(map[string]any{"deptIds": h.scopeDeptIDs(r.Context(), task.ScopeDeptID)})
 		resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
 		if err == nil {
 			defer resp.Body.Close()

@@ -72,20 +72,16 @@ func (h *AssetHandler) List(w http.ResponseWriter, r *http.Request) {
 		pageSize = 20
 	}
 
-	roleLevel, _ := middleware.GetRoleLevel(r.Context())
 	uid, _ := middleware.GetUID(r.Context())
 
-	subIDs, unlimited := middleware.GetDeptSubtree(r.Context())
-	if roleLevel == 1 {
-		unlimited = true
+	deptIDs, unlimited, err := h.visibleDeptIDs(r)
+	if err != nil {
+		writeErr(w, err)
+		return
 	}
-	var deptIDs []int64
-	if !unlimited {
-		deptIDs = subIDs
-		if len(deptIDs) == 0 {
-			writeOK(w, map[string]any{"list": []any{}, "page": page, "pageSize": pageSize, "total": 0})
-			return
-		}
+	if !unlimited && len(deptIDs) == 0 {
+		writeOK(w, map[string]any{"list": []any{}, "page": page, "pageSize": pageSize, "total": 0})
+		return
 	}
 
 	var statusFilter *int8
@@ -143,6 +139,10 @@ func (h *AssetHandler) Detail(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	if err := h.ensureAssetInScope(r, a.DepartmentID); err != nil {
+		writeErr(w, err)
+		return
+	}
 	writeOK(w, assetToMap(*a))
 }
 
@@ -160,6 +160,21 @@ func (h *AssetHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errx.ErrInvalidParam)
 		return
 	}
+	existing, err := model.NewAssetModel(h.DB).FindByID(r.Context(), id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := h.ensureAssetInScope(r, existing.DepartmentID); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if req.DepartmentId > 0 {
+		if err := h.ensureAssetInScope(r, req.DepartmentId); err != nil {
+			writeErr(w, err)
+			return
+		}
+	}
 	if err := model.NewAssetModel(h.DB).Update(r.Context(), id, req.Name, req.Category, req.Location, req.DepartmentId, req.IsShared); err != nil {
 		writeErr(w, err)
 		return
@@ -170,6 +185,15 @@ func (h *AssetHandler) Update(w http.ResponseWriter, r *http.Request) {
 // DELETE /asset/assets/:id
 func (h *AssetHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := parseID(r.URL.Path, "/assets/")
+	existing, err := model.NewAssetModel(h.DB).FindByID(r.Context(), id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := h.ensureAssetInScope(r, existing.DepartmentID); err != nil {
+		writeErr(w, err)
+		return
+	}
 	if err := model.NewAssetModel(h.DB).SoftDelete(r.Context(), id); err != nil {
 		writeErr(w, err)
 		return
@@ -217,6 +241,43 @@ func (h *AssetHandler) SharedList(w http.ResponseWriter, r *http.Request) {
 		items[i] = assetToMap(a)
 	}
 	writeOK(w, map[string]any{"list": items, "page": page, "pageSize": pageSize, "total": total})
+}
+
+// visibleDeptIDs 返回当前用户可见的部门 ID 集合。
+// asset-api 未挂载 RequireDeptScope 时，通过 user-api 的 college-subtree 接口补全院级子树。
+func (h *AssetHandler) visibleDeptIDs(r *http.Request) (deptIDs []int64, unlimited bool, err error) {
+	roleLevel, _ := middleware.GetRoleLevel(r.Context())
+	if roleLevel == 1 {
+		return nil, true, nil
+	}
+	subIDs, unlimited := middleware.GetDeptSubtree(r.Context())
+	if unlimited {
+		return nil, true, nil
+	}
+	if len(subIDs) > 0 {
+		return subIDs, false, nil
+	}
+	ids, err := h.collegeSubtreeIDs(r)
+	if err != nil {
+		return nil, false, err
+	}
+	return ids, false, nil
+}
+
+func (h *AssetHandler) ensureAssetInScope(r *http.Request, departmentID int64) error {
+	deptIDs, unlimited, err := h.visibleDeptIDs(r)
+	if err != nil {
+		return err
+	}
+	if unlimited {
+		return nil
+	}
+	for _, id := range deptIDs {
+		if id == departmentID {
+			return nil
+		}
+	}
+	return errx.ErrForbidden
 }
 
 func (h *AssetHandler) collegeSubtreeIDs(r *http.Request) ([]int64, error) {
