@@ -205,7 +205,7 @@
 
 ---
 
-## 6. 盘点详情页（Univer 表格 + 差异报告）
+## 6. 盘点详情页（可编辑表格 + 差异报告）
 
 **路由**：`/admin/inventory/tasks/:id`、`/college/inventory/tasks/:id`
 
@@ -219,7 +219,7 @@
 │  进度: 已提交 15 / 应盘 50 台                        │
 │                                                      │
 │  ┌──────────────────────────────────────────────┐    │
-│  │           Univer 协同表格区域                  │    │
+│  │     Ant Design 可编辑 Table（InventorySpreadsheet）│
 │  │ ┌──────┬──────────┬──────┬─────────┬──────┐  │    │
 │  │ │资产编号│ 资产名称  │账面位置│ 实际位置 │ 备注 │  │    │
 │  │ ├──────┼──────────┼──────┼─────────┼──────┤  │    │
@@ -229,7 +229,7 @@
 │  │ └──────┴──────────┴──────┴─────────┴──────┘  │    │
 │  └──────────────────────────────────────────────┘    │
 │                                                      │
-│  [保存草稿]  [批量提交]                               │
+│  [保存草稿]  [添加盘盈行]  [批量提交]                  │
 │                                                      │
 │  提交结果:                                            │
 │  ✅ 成功: EQUIP-2026-0001, EQUIP-2026-0002           │
@@ -237,9 +237,11 @@
 └─────────────────────────────────────────────────────┘
 ```
 
+**数据加载**：`expectedAssets` + MongoDB 草稿合并为 `rows` 后设 `rowsReady=true` 再挂载表格（`key={taskId}` 切换任务时重置）。
+
 ### 阶段 2：已归档（task.status = 2）
 
-- Univer 表格变为只读
+- 表格变为只读
 - 显示"比对中..."加载状态
 
 ### 阶段 3：已完成（task.status = 3）
@@ -263,12 +265,13 @@
 └─────────────────────────────────────────────────────┘
 ```
 
-**Univer 关键交互**：
-1. 页面加载时调用 `GET /tasks/:id/expected-assets` 获取应盘资产，填入表格首三列（资产编号/名称/账面位置，设为只读）
-2. 盘点员在"实际位置"和"备注"列填写，点击"保存草稿"或 Ctrl+S → `POST /tasks/:id/submit`
+**表格关键交互**：
+1. 页面加载时调用 `GET /tasks/:id/expected-assets`，与 MongoDB 草稿合并为 `rows`，`rowsReady` 后再挂载 `InventorySpreadsheet`
+2. 盘点员在"实际位置"和"备注"列 inline 编辑，点击"保存草稿"或 Ctrl+S → `POST /tasks/:id/submit`
 3. 提交后，根据响应中的 `conflicts` 列表将对应行标红（Ant Design `rowClassName`）
 4. 冲突行可单独重新编辑提交
 5. "批量提交"时传 `expectedUpdatedAt` 做 CAS 检查
+6. 「添加盘盈行」在表格末尾追加空行（assetNo 可留空，提交时由后端处理）
 
 ---
 
@@ -342,7 +345,7 @@
 ## 10. 页面间路由过渡
 
 - 所有页面切换使用 React Router `<Outlet />`，不需要额外的过渡动画
-- 盘点详情页的 Univer 组件在 `React.lazy(() => import('./UniverSpreadsheet'))` 中懒加载（Univer 体积较大）
+- 盘点详情页的 `InventorySpreadsheet` 在 `React.lazy(() => import('./InventorySpreadsheet'))` 中懒加载
 - 表单提交后使用 `useNavigate` 跳转到列表页（如创建资产成功后跳转 `/admin/assets`）
 
 ---

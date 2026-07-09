@@ -13,7 +13,7 @@
 | UI 库 | Ant Design 5 | 表格/表单/树/Tabs 开箱即用，ProTable 天然适配 CRUD 后台 |
 | 状态管理 | Redux Toolkit + RTK Query | 服务端缓存自动化，API loading/error 状态不需要手写 |
 | 路由 | React Router v6 | layout route + nested routes 用角色划分 |
-| 表格 | Univer | 盘点模块类 Excel 协同录入（Luckysheet 后继项目） |
+| 表格 | Ant Design Table（盘点）+ Univer 实验代码 | 盘点 v1 用 Ant Design 可编辑 Table 对接 submit API；Univer 0.5.5 已装但未接入主流程 |
 | HTTP | `fetch` (RTK Query 内置) | 不需要 axios，RTK Query 的 `createApi` 自带 |
 | 样式 | Ant Design 内置 + CSS Modules | 避免引入额外 CSS 方案 |
 
@@ -28,7 +28,7 @@
 | 3 | 状态管理 | Redux Toolkit + RTK Query | 2026-07-07 |
 | 4 | 路由策略 | 三个角色分开路由 | 2026-07-07 |
 | 5 | 后端对接 | 直连（Vite proxy），MSW 按需补充 | 2026-07-07 |
-| 6 | 盘点表格 | Univer（直接上，不做简化版） | 2026-07-07 |
+| 6 | 盘点表格 | Univer（直接上，不做简化版）→ **生产已改 Ant Design Table** | 2026-07-07 / 2026-07-09 |
 | 7 | 代码位置 | `./frontend/` | 2026-07-07 |
 
 **为什么不用 Vue？**

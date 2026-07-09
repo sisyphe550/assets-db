@@ -1,6 +1,6 @@
 # FAMS 后端开发完成状态报告
 
-> 更新日期：2026-07-07
+> 更新日期：2026-07-09（功能与修复详见 `13-release-notes-2026-07-09.md`）
 
 ---
 
@@ -25,7 +25,7 @@ Create workflow → College approve → School approve
 | `outbox-dispatcher` | 轮询 `workflow_outbox` → Kafka | 端到端验证 |
 | `asset-consumer` | 订阅 `fams-asset-lifecycle-events` → 台账同步 | 端到端验证 |
 | `comparison-worker` | 订阅 `fams-inventory-comparison-tasks` → 账实比对 | 代码已实现 |
-| `export-worker` | Redis BRPOP → CSV 生成 | 代码已实现 |
+| `export-worker` | Redis BRPOP → CSV 生成（asset_list / workflow_log / inventory_diff） | 已实现，需与 report-api 同启 |
 
 ---
 
@@ -170,6 +170,10 @@ Create workflow → College approve → School approve
 | 6 | 所有 PG 表 INSERT 失败 | id 列无序列/IDENTITY | ALTER TABLE ADD IDENTITY |
 | 7 | fams_report 数据库不存在 | 初始化脚本未创建 | CREATE DATABASE fams_report |
 | 8 | Report export 50001 | 连接 fams_core 但表在 fams_report | 增加 reportDB 连接 |
+| 9 | 院级资产列表为空 | asset-api 未注入 dept 子树 | college-subtree fallback + 详情 scope 校验 |
+| 10 | 工单详情 IDOR | Detail 无权限校验 | 按角色/子树/申请人隔离 |
+| 11 | 盘点 expected 缺子部门 | scope 仅传单 deptId | scopeDeptIDs 展开子树 |
+| 12 | 导出 download 404 | 路由与 stub 响应 | 修复路由 + worker 写 CSV + 读文件下载 |
 
 ---
 
@@ -207,7 +211,18 @@ go build ./... && go vet ./...
 | `08-infra-config.md` | 基础设施配置 |
 | `09-testing.md` | 测试报告 |
 | `10-final-status.md` | 本文档 |
+| `13-release-notes-2026-07-09.md` | 2026-07-09 修复汇总 |
 
 ---
 
-*文档版本：v1.0 | 2026-07-07*
+## 7. 2026-07-09 前后端修复摘要
+
+完整说明见 **`doc/13-release-notes-2026-07-09.md`**。要点：
+
+- 院级资产/盘点 scope 子树、工单权限、报表导出链路已打通
+- 前端：sessionStorage 多标签隔离、院级全部工单、盘点 `rowsReady` + 恢复 Ant Design 可编辑表格
+- Univer 依赖已安装但未用于生产盘点页
+
+---
+
+*文档版本：v1.1 | 2026-07-09*

@@ -22,6 +22,7 @@
 | workflow-api | 8890 | HTTP | 审批工单流转 |
 | inventory-api | 8891 | HTTP | 盘点任务管理 |
 | report-api | 8892 | HTTP | 数据统计与导出 |
+| export-worker | — | 进程 | Redis BRPOP 异步 CSV 导出（需与 report-api 同启） |
 
 ## 本地开发
 
@@ -37,6 +38,7 @@ go run service/asset/rpc/asset.go
 go run service/workflow/api/workflow.go
 go run service/inventory/api/inventory.go
 go run service/report/api/report.go
+go run service/report/export-worker/main.go   # 报表 CSV 异步导出
 
 # 3. 运行测试
 make test-unit        # 单元测试
@@ -53,4 +55,5 @@ make test-e2e         # E2E 测试（需全部服务）
 - `doc/05-seed-fixtures.md` — 固定种子数据
 - `doc/06-error-codes.md` — 错误码矩阵
 - `doc/07-inventory-ops.md` — 盘点操作流程
-- `doc/08-infra-config.md` — 基础设施配置
+- `doc/10-final-status.md` — 项目完成状态
+- `doc/13-release-notes-2026-07-09.md` — 2026-07-09 修复汇总

@@ -1,42 +1,68 @@
 # AGENTS.md
 
-## Cursor Cloud specific instructions
+## 项目概况
 
-### Repository state
-This repo is currently **design-only**. It contains planning documents
-(`backend/doc/01-desgin.md`, `backend/doc/02-plan.md`) and empty placeholders
-(`README.md`, `backend/docker-compose-env.yml`). There is **no source code, no
-`go.mod`, and no `docker-compose.yml` yet**. The planned system (FAMS) is a
-Go/`go-zero` microservices backend to be implemented in phases P0–P9 (see
-`backend/doc/02-plan.md`). Until P0 lands there is no application to build/run;
-only the toolchain below is set up.
+FAMS（高校固定资产管理系统）为 **前后端均已实现** 的全栈项目，仓库根目录为 `assets-db/`。
 
-### Toolchain available in this environment
-- **Go 1.22.2** (`/usr/bin/go`) — satisfies the design's `Go >= 1.22` requirement.
-- **goctl 1.10.1** — the `go-zero` code generator, installed to `$(go env GOPATH)/bin`.
-- **Docker 29.6.1** + **compose v5** — for the design-mandated infra (Postgres, MySQL, Mongo, Redis, Kafka, etcd, Jaeger, Prometheus, Grafana).
-- **Node 22** — for the planned Univer-based collaborative spreadsheet frontend.
+| 目录 | 说明 |
+|---|---|
+| `backend/` | Go 微服务（user / asset / workflow / inventory / report + RPC + Worker） |
+| `frontend/` | React 18 + TypeScript + Vite + Ant Design + RTK Query |
+| `backend/doc/` | 后端架构、API 契约、测试报告 |
+| `frontend/doc/` | 前端设计、实现蓝图、开发日志（`dev-log/`） |
 
-### Non-obvious startup caveats
-- **`goctl` on PATH**: `$(go env GOPATH)/bin` is appended to `PATH` in `~/.bashrc`.
-  In a non-login/non-interactive shell run `export PATH="$PATH:$(go env GOPATH)/bin"` first.
-- **Docker daemon is NOT auto-started** (no systemd in this container). Start it manually once per VM session and give it a few seconds:
-  ```bash
-  sudo nohup dockerd > /tmp/dockerd.log 2>&1 &
-  sleep 8
-  sudo docker info | grep -i "storage driver"   # expect: fuse-overlayfs
-  ```
-  Docker commands need `sudo`.
-- **Docker storage driver**: `/etc/docker/daemon.json` is preconfigured to use
-  `fuse-overlayfs` with `containerd-snapshotter` disabled (required for Docker 29
-  in this Firecracker VM). Do not switch to `overlay2`.
+## 本地开发
 
-### Once code exists (P0+)
-Per `backend/doc/02-plan.md`, infra is started with docker compose (files created in P0):
+### 基础设施
+
 ```bash
-docker compose -f deploy/docker/docker-compose.yml --env-file deploy/docker/docker-compose-env.yml up -d
+cd backend && make infra-up    # Docker：PG / MySQL / Mongo / Redis / Kafka 等
 ```
-Go services then run individually via `go run service/<svc>/{api,rpc}/...`.
-`go test ./pkg/... ./service/...` runs unit tests; integration/e2e tests use
-`-tags=integration` / `-tags=e2e` and require the infra stack running. Do not put
-`docker compose up` in the startup/update script — start it manually as a service step.
+
+### 后端服务（各开一终端）
+
+```bash
+go run service/user/api/user.go
+go run service/asset/api/asset.go
+go run service/asset/rpc/asset.go
+go run service/workflow/api/workflow.go
+go run service/inventory/api/inventory.go
+go run service/report/api/report.go
+go run service/report/export-worker/main.go   # 报表 CSV 导出（与 report-api 配套）
+```
+
+其他可选 Worker：`service/asset/consumer/main.go` 等。
+
+### 前端
+
+```bash
+cd frontend && npm install && npm run dev   # http://localhost:5173，API 走 Vite proxy
+npm test && npm run build
+```
+
+### 测试账号
+
+密码均为 `Test@123456`：`admin_school`（校级）、`admin_info`（院级）、`student_001`（师生）。详见 `backend/doc/05-seed-fixtures.md`。
+
+## 架构要点（易踩坑）
+
+1. **院级数据隔离**：资产列表通过 `user-api /departments/college-subtree` 展开院系子树；盘点 `expected-assets` 同样展开 scope 子部门。
+2. **盘点表格**：生产使用 `InventorySpreadsheet`（Ant Design 可编辑 Table）；`UniverSpreadsheet.tsx` 为实验代码，**未接入主流程**。
+3. **盘点草稿**：MongoDB + CAS；多操作员按 `operator_id` 隔离；前端 `rowsReady` 门控避免重进页面空表。
+4. **报表导出**：`POST /report/export` → Redis 队列 → `export-worker` 生成 CSV → `GET .../download`。
+5. **JWT**：前端 Token 存 `sessionStorage`（多标签隔离）。
+
+## 文档索引
+
+| 文档 | 用途 |
+|---|---|
+| `backend/doc/10-final-status.md` | 后端完成度与 Bug 记录 |
+| `backend/doc/13-release-notes-2026-07-09.md` | 2026-07-09 前后端修复汇总 |
+| `backend/doc/03-api-contract.md` | API 契约（权威） |
+| `frontend/doc/07-implementation.md` | 前端实现蓝图 |
+| `frontend/doc/dev-log/` | 分阶段开发日志 |
+
+## Cursor Cloud 注意事项
+
+- Docker 需手动启动：`sudo nohup dockerd > /tmp/dockerd.log 2>&1 &`
+- `goctl` 在 `$(go env GOPATH)/bin`，非交互 shell 需 `export PATH="$PATH:$(go env GOPATH)/bin"`

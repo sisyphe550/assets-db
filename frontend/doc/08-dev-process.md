@@ -13,7 +13,7 @@
 | P1-P2 | `feat/frontend-p1-p2-foundation` | 脚手架、登录、Layout、路由守卫 | `npm test` + `npm run build` 通过 |
 | P3 | `feat/frontend-p3-assets` | 资产 CRUD | 测试通过 + 手动验证资产列表 |
 | P4 | `feat/frontend-p4-workflow` | 工单审批 | 测试通过 + 领用流程可走通 |
-| P5 | `feat/frontend-p5-inventory` | 盘点 + Univer | 测试通过 + 草稿提交 |
+| P5 | `feat/frontend-p5-inventory` | 盘点 + 可编辑 Table | 测试通过 + 草稿提交 |
 | P6 | `feat/frontend-p6-reports` | 报表导出 | 测试通过 |
 | P7 | `feat/frontend-p7-admin` | 组织树 + 用户管理 | 测试通过 |
 

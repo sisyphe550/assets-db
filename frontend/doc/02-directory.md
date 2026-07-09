@@ -181,28 +181,26 @@ frontend/
 
 **实现方式**：三个 Layout 的顶栏完全一样（同一个 `<TopHeader />` 组件）。侧边栏根据角色渲染不同的 `<Menu>` 项。内容区是 `<Outlet />`。
 
-### 2.3 Univer 表格封装（`UniverSpreadsheet.tsx`）
+### 2.3 盘点表格（`InventorySpreadsheet.tsx`，生产）
 
-这是最特殊的组件，封装逻辑独立于普通 React 组件：
+生产盘点详情页使用 Ant Design 可编辑 Table，封装于 `InventorySpreadsheet.tsx`：
 
 ```
 Props:
-  - initialData: { assetNo, name, bookLocation }[]  # 应盘资产列表
-  - onSubmit: (items: SubmitItem[]) => void           # 提交回调
-  - readOnly: boolean                                # 归档后只读
-
-内部状态:
-  - Univer 实例（useRef）
-  - 已修改的单元格缓存（Map<assetNo, modifiedCells>）
-  - 上次提交的 updatedAt（用于 CAS 版本检查）
+  - rows: InventoryRow[]           # 合并 expected + 草稿
+  - readOnly: boolean
+  - onRowsChange / onSubmitResult
 
 职责:
-  1. 初始化 Univer 工作簿，将 initialData 填入首列
-  2. 将资产编号列和账面位置列设为只读
-  3. 监听单元格变更 → 更新修改缓存
-  4. 点击提交 → 组装 SubmitItem[] → 调 onSubmit
-  5. 收到响应 → 标红 conflict 行
+  1. 只读列：资产编号、名称、账面位置
+  2. 可编辑列：实际位置、备注
+  3. 添加盘盈行、批量提交 → POST /tasks/:id/submit
+  4. 冲突行标红、成功行标绿
 ```
+
+**挂载门控**：`InventoryTaskDetailView` 在 `rowsReady` 后才 lazy-load 表格（`key={taskId}`）。
+
+**实验组件** `UniverSpreadsheet.tsx`：Univer 0.5.5 封装，未接入主流程。详见 `doc/dev-log/010-fix-inventory-spreadsheet.md`。
 
 ---
 

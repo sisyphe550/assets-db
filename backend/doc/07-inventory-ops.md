@@ -68,7 +68,7 @@ sequenceDiagram
 
 ## 3. 获取应盘清单（GET expected-assets）
 
-**用途**：前端 Univer 表格初始化行。
+**用途**：前端盘点表格（`InventorySpreadsheet`）初始化应盘行；院级 scope 会展开子部门 ID。
 
 ```
 1. 校验任务存在且调用者有权限（创建者/指派员/上级管理员）

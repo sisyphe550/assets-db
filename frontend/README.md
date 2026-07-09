@@ -11,7 +11,7 @@
 | UI 库 | Ant Design 5 |
 | 状态管理 | Redux Toolkit + RTK Query |
 | 路由 | React Router v6（三个角色分开 Layout） |
-| 表格 | Univer（盘点模块） |
+| 表格 | Ant Design Table（盘点可编辑表格）；Univer 依赖已装，实验代码见 `UniverSpreadsheet.tsx` |
 | 后端对接 | 直连（Vite proxy），MSW 按需补充 |
 
 ## 设计文档
@@ -44,3 +44,5 @@ npm run dev       # http://localhost:5173
 - `../backend/doc/06-error-codes.md` — 完整错误码（27 个）
 - `../backend/doc/05-seed-fixtures.md` — 测试账号与固定数据
 - `../backend/doc/10-final-status.md` — 后端完成状态（95%+）
+- `../backend/doc/13-release-notes-2026-07-09.md` — 2026-07-09 修复汇总
+- `doc/dev-log/` — 按阶段/修复记录的开发日志（最新 `010-fix-inventory-spreadsheet.md`）

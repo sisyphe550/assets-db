@@ -294,39 +294,33 @@ interface WorkflowTableProps {
 
 ---
 
-### 2.8 UniverSpreadsheet（盘点表格封装）
+### 2.8 InventorySpreadsheet（盘点表格，生产组件）
 
 | 属性 | 规格 |
 |---|---|
-| 组件 | 懒加载 `React.lazy(() => import('./UniverSpreadsheet'))` |
-| 文件 | `components/inventory/UniverSpreadsheet.tsx` |
+| 组件 | 懒加载 `React.lazy(() => import('./InventorySpreadsheet'))` |
+| 文件 | `components/inventory/InventorySpreadsheet.tsx` |
 | 加载中 | `<Skeleton active paragraph={{ rows: 10 }} />` |
+| 挂载门控 | 父组件 `InventoryTaskDetailView` 在 `rowsReady=true` 后才渲染（避免 RTK 缓存命中时空表） |
 
 **Props**：
 
 ```typescript
-interface UniverSpreadsheetProps {
-  taskId: number;                        // 盘点任务 ID
-  expectedAssets: ExpectedAsset[];        // GET /tasks/:id/expected-assets 结果
+interface InventorySpreadsheetProps {
+  taskId: number;
+  rows: InventoryRow[];                 // 合并 expected + 草稿后的行
   readOnly: boolean;                      // task.status !== 1 时锁定
-  onSubmitResult?: (result: SubmitResult) => void;  // 提交结果回调（标红冲突行）
+  onRowsChange: (rows: InventoryRow[]) => void;
+  onSubmitResult?: (result: SubmitResult) => void;
 }
 ```
 
-**初始化**：
-1. 创建 Univer 工作簿
-2. 设置首列"资产编号"、第二列"资产名称"、第三列"账面位置"为只读
-3. 设置"实际位置"、"备注"列可编辑
-4. 可选："盘盈资产"行（手动添加新行，assetNo 为未知编号）
+**交互**：
+1. Ant Design 可编辑 `<Table>`：资产编号/名称/账面位置只读，实际位置/备注可 inline 编辑
+2. 「添加盘盈行」在表格末尾追加空行
+3. 「批量提交」→ `POST /tasks/:id/submit`；成功行绿底、冲突行红底
 
-**提交**：
-1. 遍历所有修改过的行 → 组装 `SubmitItem[]`
-2. 调用 `POST /tasks/:id/submit`
-3. 成功行 → 绿色背景
-4. 冲突行 → `rowClassName` 标红 + `Alert` 显示冲突原因
-5. 失败行 → `Alert type="warning"` 显示失败原因
-
-**内存管理**：组件卸载时 `univer.dispose()` 释放内存
+**实验组件**：`UniverSpreadsheet.tsx` 保留于仓库，**未接入主流程**（增行整实例重建、inline 编辑体验差）。详见 `doc/dev-log/010-fix-inventory-spreadsheet.md`。
 
 ---
 
@@ -447,7 +441,9 @@ Row gutter={[16, 16]}
 
 ---
 
-## 4. Univer 集成说明
+## 4. Univer 集成说明（实验，未用于生产）
+
+> **当前状态（2026-07-09）**：盘点详情页使用 §2.8 `InventorySpreadsheet`（Ant Design Table）。本节描述 Univer 实验实现，供后续迭代参考。
 
 ### 4.1 安装
 
@@ -811,7 +807,7 @@ Layout
     ├── WorkflowCreateForm → AssetPickerModal
     ├── InventoryTaskTable
     ├── InventoryTaskForm → DeptTreeSelect
-    ├── InventoryTaskDetailPage → UniverSpreadsheet
+    ├── InventoryTaskDetailPage → InventorySpreadsheet
     ├── DepartmentPage → DeptTreeSelect
     └── UserManagePage → CreateUserModal
 ```

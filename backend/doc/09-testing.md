@@ -1,7 +1,7 @@
 # FAMS 测试报告（v1）
 
 > 记录开发过程中发现的 bug、测试覆盖率和手动验证结果。
-> 测试日期：2026-07-07
+> 测试日期：2026-07-07（§6 补充 2026-07-09 回归验证）
 
 ---
 
@@ -116,13 +116,15 @@ go build ./... && go vet ./...
 
 **修复**：role=1 使用 rootID=0；role=2 以管理员 deptID 为根，手动构造根节点再挂载 children。
 
-### 4.3 资产列表 role=1 返回空（中等）
+### 4.3 校级资产列表 role=1 返回空（中等）
 
 **现象**：校级管理员 GET /assets 返回空列表。
 
 **原因**：`List` handler 依赖 `GetDeptSubtree` 中间件注入的 deptIDs，但 main.go 只注册了 `JWTAuth` 而未注册 `RequireDeptScope`，导致 `unlimited=false` + `deptIDs=[]`。
 
 **修复**：在 `List` handler 中增加 role=1 的直接判断，role=1 视为 unlimited。
+
+> **2026-07-09 补充**：院级管理员（role=2）资产列表为空是另一问题——asset-api 未展开院系子树。修复见 `13-release-notes-2026-07-09.md` §1.1（`college-subtree` fallback + 详情 scope 校验）。
 
 ### 4.4 Workflow struct 缺少 json tag（轻微）
 
@@ -157,10 +159,26 @@ go build ./... && go vet ./...
 | Redis JWT 黑名单 | 代码已就绪但 session 写入未启用（中间件 Redis 传 nil） |
 | Outbox Dispatcher 投递 | Dispatcher 逻辑已实现，未启动独立进程测试 |
 | Kafka 消费者幂等 | 去重表 `asset_event_dedup` 已创建，消费逻辑已实现，未端到端测试 |
-| MongoDB CAS 乐观锁 | 索引已就绪，Go 代码中 CAS 未实现 |
-| 报表异步导出 | 队列和 worker 未实现 |
+| MongoDB CAS 乐观锁 | **Submit handler 已实现**（2026-07-07）；前端冲突标红已对接 |
+| 报表异步导出 | **已实现**（2026-07-09）：report-api LPUSH + export-worker BRPOP → CSV；需同启 worker |
+| asset-api RequireDeptScope 中间件 | 仍在 handler 内 fallback，未挂全局中间件 |
 | Nginx 反向代理 | nginx.conf 已编写，未部署测试 |
 
 ---
 
-*文档版本：v1.0 | 2026-07-07*
+## 6. 2026-07-09 回归验证（手动）
+
+| # | 场景 | 账号 | 期望 | 结果 |
+|---|---|---|---|---|
+| 30 | 院级本院资产含子部门 | admin_info (dept=15) | 可见 dept 15/103/104 资产 | PASS |
+| 31 | 院级工单详情隔离 | admin_info / teacher | 非本树/非本人详情 403 | PASS |
+| 32 | 盘点 expected 含子部门 | admin_info 创建任务 scope=15 | expected 含实验室资产 | PASS |
+| 33 | 报表导出 CSV | admin_school | asset_list / workflow_log / inventory_diff 可下载 | PASS |
+| 34 | 盘点重进数据可见 | 任意盘点员 | 退出重进任务详情，行数据立即可见 | PASS |
+| 35 | 添加盘盈行 | 任意盘点员 | 增行后表格不消失、可编辑 | PASS |
+
+详见 `doc/13-release-notes-2026-07-09.md`。
+
+---
+
+*文档版本：v1.1 | 2026-07-09*
