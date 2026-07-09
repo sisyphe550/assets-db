@@ -15,12 +15,21 @@
     "@ant-design/icons": "5.5.1",
     "@ant-design/pro-components": "2.8.2",
     "@reduxjs/toolkit": "2.5.0",
+    "@univerjs/core": "^0.5.5",
+    "@univerjs/design": "^0.5.5",
+    "@univerjs/docs": "^0.5.5",
+    "@univerjs/docs-ui": "^0.5.5",
+    "@univerjs/engine-render": "^0.5.5",
+    "@univerjs/sheets": "^0.5.5",
+    "@univerjs/sheets-ui": "^0.5.5",
+    "@univerjs/ui": "^0.5.5",
     "antd": "5.22.5",
     "dayjs": "1.11.13",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-redux": "9.2.0",
-    "react-router-dom": "6.28.0"
+    "react-router-dom": "6.28.0",
+    "vue": "^3.5.13"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "6.6.3",

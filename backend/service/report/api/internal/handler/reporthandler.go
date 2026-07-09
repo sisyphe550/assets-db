@@ -3,9 +3,11 @@ package handler
 import (
 	"context"
 	"database/sql"
-	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -22,10 +24,11 @@ type ReportHandler struct {
 	ReportDB *sql.DB
 	MySQL    *sql.DB
 	RDB      *redis.Client
+	ExportDir string
 }
 
-func NewReportHandler(pg, reportDB, mysql *sql.DB, rdb *redis.Client) *ReportHandler {
-	return &ReportHandler{PG: pg, ReportDB: reportDB, MySQL: mysql, RDB: rdb}
+func NewReportHandler(pg, reportDB, mysql *sql.DB, rdb *redis.Client, exportDir string) *ReportHandler {
+	return &ReportHandler{PG: pg, ReportDB: reportDB, MySQL: mysql, RDB: rdb, ExportDir: exportDir}
 }
 
 // GET /report/assets/by-dept
@@ -198,23 +201,38 @@ func (h *ReportHandler) InventoryDiff(w http.ResponseWriter, r *http.Request) {
 func (h *ReportHandler) Export(w http.ResponseWriter, r *http.Request) {
 	uid, _ := middleware.GetUID(r.Context())
 	var req struct {
-		ExportType string `json:"exportType"`
+		ExportType string         `json:"exportType"`
+		Params     map[string]any `json:"params"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, errx.ErrInvalidParam)
+		return
+	}
+	if req.ExportType == "" {
+		writeErr(w, errx.ErrInvalidParam)
+		return
+	}
+	paramsJSON, _ := json.Marshal(req.Params)
+	if req.Params == nil {
+		paramsJSON = []byte("{}")
+	}
 
-	var jobID int64
-	err := h.ReportDB.QueryRowContext(r.Context(),
-		`INSERT INTO rpt_export_job (creator_id, export_type, params) VALUES ($1,$2,'{}') RETURNING id`,
-		uid, req.ExportType).Scan(&jobID)
+	jobID, err := h.nextExportJobID(r.Context())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	_, err = h.ReportDB.ExecContext(r.Context(),
+		`INSERT INTO rpt_export_job (id, creator_id, export_type, params, status) VALUES ($1,$2,$3,$4,0)`,
+		jobID, uid, req.ExportType, paramsJSON)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 
-	// 投递到 Redis 队列
 	if h.RDB != nil {
 		jobJSON, _ := json.Marshal(map[string]any{
-			"jobId": jobID, "exportType": req.ExportType, "creatorId": uid,
+			"jobId": jobID, "exportType": req.ExportType, "creatorId": uid, "params": req.Params,
 		})
 		h.RDB.LPush(r.Context(), "fams:export:queue", string(jobJSON))
 	}
@@ -222,23 +240,94 @@ func (h *ReportHandler) Export(w http.ResponseWriter, r *http.Request) {
 	writeOK(w, map[string]any{"jobId": jobID})
 }
 
+func (h *ReportHandler) nextExportJobID(ctx context.Context) (int64, error) {
+	var id int64
+	err := h.ReportDB.QueryRowContext(ctx, `SELECT COALESCE(MAX(id), 0) + 1 FROM rpt_export_job`).Scan(&id)
+	return id, err
+}
+
 // GET /report/export/:jobId
 func (h *ReportHandler) ExportStatus(w http.ResponseWriter, r *http.Request) {
-	jobID := parseLastPathSeg(r.URL.Path)
+	jobID := parseExportJobID(r.URL.Path)
+	if jobID == 0 {
+		writeErr(w, errx.ErrInvalidParam)
+		return
+	}
+	uid, _ := middleware.GetUID(r.Context())
+
 	var status int16
 	var errMsg *string
-	h.ReportDB.QueryRowContext(r.Context(),
-		`SELECT status, error_message FROM rpt_export_job WHERE id=$1`, jobID).Scan(&status, &errMsg)
-	writeOK(w, map[string]any{"jobId": jobID, "status": status, "errorMessage": errMsg})
+	var creatorID int64
+	err := h.ReportDB.QueryRowContext(r.Context(),
+		`SELECT status, error_message, creator_id FROM rpt_export_job WHERE id=$1`, jobID).
+		Scan(&status, &errMsg, &creatorID)
+	if err == sql.ErrNoRows {
+		writeErr(w, errx.ErrNotFound)
+		return
+	}
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if creatorID != uid {
+		roleLevel, _ := middleware.GetRoleLevel(r.Context())
+		if roleLevel != 1 {
+			writeErr(w, errx.ErrForbidden)
+			return
+		}
+	}
+
+	resp := map[string]any{"jobId": jobID, "status": status, "errorMessage": errMsg}
+	if status == 2 {
+		resp["downloadUrl"] = fmt.Sprintf("/api/v1/report/export/%d/download", jobID)
+	}
+	writeOK(w, resp)
 }
 
 // GET /report/export/:jobId/download
 func (h *ReportHandler) ExportDownload(w http.ResponseWriter, r *http.Request) {
+	jobID := parseExportJobID(strings.TrimSuffix(r.URL.Path, "/download"))
+	if jobID == 0 {
+		writeErr(w, errx.ErrInvalidParam)
+		return
+	}
+	uid, _ := middleware.GetUID(r.Context())
+
+	var status int16
+	var filePath sql.NullString
+	var creatorID int64
+	err := h.ReportDB.QueryRowContext(r.Context(),
+		`SELECT status, file_path, creator_id FROM rpt_export_job WHERE id=$1`, jobID).
+		Scan(&status, &filePath, &creatorID)
+	if err == sql.ErrNoRows {
+		writeErr(w, errx.ErrNotFound)
+		return
+	}
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if creatorID != uid {
+		roleLevel, _ := middleware.GetRoleLevel(r.Context())
+		if roleLevel != 1 {
+			writeErr(w, errx.ErrForbidden)
+			return
+		}
+	}
+	if status != 2 || !filePath.Valid || filePath.String == "" {
+		writeErr(w, errx.ErrInvalidState)
+		return
+	}
+
+	data, err := os.ReadFile(filePath.String)
+	if err != nil {
+		writeErr(w, errx.ErrInternal)
+		return
+	}
+	baseName := filepath.Base(filePath.String)
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", "attachment; filename=export.csv")
-	cw := csv.NewWriter(w)
-	cw.Write([]string{"id", "name", "category", "status"})
-	cw.Flush()
+	w.Header().Set("Content-Disposition", "attachment; filename="+baseName)
+	w.Write(data)
 }
 
 func writeOK(w http.ResponseWriter, data any) {
@@ -251,6 +340,17 @@ func writeErr(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(httpStatus)
 	json.NewEncoder(w).Encode(map[string]any{"code": code, "message": msg, "data": nil})
+}
+
+func parseExportJobID(path string) int64 {
+	path = strings.TrimSuffix(path, "/download")
+	path = strings.TrimSuffix(path, "/")
+	idx := strings.LastIndex(path, "/")
+	if idx < 0 {
+		return 0
+	}
+	id, _ := strconv.ParseInt(path[idx+1:], 10, 64)
+	return id
 }
 
 func parseLastPathSeg(path string) int64 {

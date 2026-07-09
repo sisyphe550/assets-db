@@ -18,9 +18,10 @@ interface ExportModalProps {
   open: boolean;
   onClose: () => void;
   exportType: CreateExportReq['exportType'];
+  params?: CreateExportReq['params'];
 }
 
-export default function ExportModal({ open, onClose, exportType }: ExportModalProps) {
+export default function ExportModal({ open, onClose, exportType, params }: ExportModalProps) {
   const [jobId, setJobId] = useState<number | null>(null);
   const [polling, setPolling] = useState(false);
   const [createExport, { isLoading: creating }] = useCreateExportMutation();
@@ -37,7 +38,7 @@ export default function ExportModal({ open, onClose, exportType }: ExportModalPr
     }
     const start = async () => {
       try {
-        const result = await createExport({ exportType }).unwrap();
+        const result = await createExport({ exportType, params }).unwrap();
         setJobId(result.jobId);
         setPolling(true);
       } catch (err: unknown) {
@@ -47,7 +48,7 @@ export default function ExportModal({ open, onClose, exportType }: ExportModalPr
       }
     };
     void start();
-  }, [open, exportType, createExport, onClose]);
+  }, [open, exportType, params, createExport, onClose]);
 
   useEffect(() => {
     if (job?.status !== undefined && job.status >= 2) {

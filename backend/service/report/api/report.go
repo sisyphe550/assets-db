@@ -6,10 +6,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
-	_ "github.com/lib/pq"
 	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/sisyphus550/assets-db/backend/pkg/middleware"
@@ -21,6 +22,7 @@ func main() {
 	reportDSN := getEnv("POSTGRES_REPORT_DSN", "postgres://fams:fams_dev_pass@localhost:5432/fams_report?sslmode=disable")
 	mysqlDSN := getEnv("MYSQL_DSN", "fams:fams_dev_pass@tcp(localhost:3306)/fams_asset?parseTime=true&charset=utf8mb4&collation=utf8mb4_unicode_ci")
 	redisAddr := getEnv("REDIS_ADDR", "localhost:6379")
+	exportDir := resolveExportDir()
 
 	pg, _ := sql.Open("postgres", pgDSN)
 	reportDB, _ := sql.Open("postgres", reportDSN)
@@ -35,7 +37,7 @@ func main() {
 		rdb = nil
 	}
 
-	h := handler.NewReportHandler(pg, reportDB, mysql, rdb)
+	h := handler.NewReportHandler(pg, reportDB, mysql, rdb, exportDir)
 
 	mux := http.NewServeMux()
 	authMux := http.NewServeMux()
@@ -44,13 +46,22 @@ func main() {
 	authMux.HandleFunc("/api/v1/report/assets/by-category", h.AssetsByCategory)
 	authMux.HandleFunc("/api/v1/report/inventory/diff/", h.InventoryDiff)
 	authMux.HandleFunc("/api/v1/report/export", func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/download") {
-			h.ExportDownload(w, r)
-		} else if r.Method == http.MethodPost {
+		if r.Method == http.MethodPost {
 			h.Export(w, r)
-		} else {
-			h.ExportStatus(w, r)
+			return
 		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+	authMux.HandleFunc("/api/v1/report/export/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/download") {
+			h.ExportDownload(w, r)
+			return
+		}
+		if r.Method == http.MethodGet {
+			h.ExportStatus(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 
 	authHandler := middleware.JWTAuth(getEnv("JWT_ACCESS_SECRET", "dev_access_secret_change_me_in_prod"), nil)(authMux)
@@ -62,6 +73,24 @@ func main() {
 }
 
 func getEnv(k, def string) string {
-	if v := os.Getenv(k); v != "" { return v }
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
 	return def
+}
+
+func resolveExportDir() string {
+	if v := os.Getenv("EXPORT_DIR"); v != "" {
+		return v
+	}
+	for _, candidate := range []string{"deploy/export", "../../../deploy/export", "../../../../deploy/export"} {
+		if abs, err := filepath.Abs(candidate); err == nil {
+			if err := os.MkdirAll(abs, 0o755); err == nil {
+				return abs
+			}
+		}
+	}
+	abs, _ := filepath.Abs("deploy/export")
+	_ = os.MkdirAll(abs, 0o755)
+	return abs
 }

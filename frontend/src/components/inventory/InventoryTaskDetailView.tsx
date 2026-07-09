@@ -37,7 +37,7 @@ import {
   type SpreadsheetRow,
 } from '@/utils/inventory';
 
-const InventorySpreadsheet = lazy(() => import('@/components/inventory/InventorySpreadsheet'));
+const InventorySpreadsheet = lazy(() => import('@/components/inventory/UniverSpreadsheet'));
 
 interface InventoryTaskDetailViewProps {
   basePath: '/admin' | '/college' | '/user';

@@ -1,19 +1,31 @@
 import { useState } from 'react';
-import { Button, Card, Space, Typography } from 'antd';
+import { Button, Card, Select, Space, Typography } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useAppSelector } from '@/store/hooks';
 import { selectCurrentUser } from '@/store/slices/authSlice';
 import ReportCharts, { type ReportTab } from '@/components/report/ReportCharts';
 import ExportModal from '@/components/report/ExportModal';
+import type { CreateExportReq } from '@/types/api';
 
 interface ReportViewProps {
   roleLevel: 1 | 2;
 }
 
+const EXPORT_OPTIONS: { label: string; value: CreateExportReq['exportType'] }[] = [
+  { label: '资产清单', value: 'asset_list' },
+  { label: '工单审批日志', value: 'workflow_log' },
+];
+
 export default function ReportView({ roleLevel }: ReportViewProps) {
   const user = useAppSelector(selectCurrentUser);
   const [tab, setTab] = useState<ReportTab>('dept');
   const [exportOpen, setExportOpen] = useState(false);
+  const [exportType, setExportType] = useState<CreateExportReq['exportType']>('asset_list');
+  const [diffTaskId, setDiffTaskId] = useState<number | undefined>();
+
+  const activeExportType = tab === 'diff' && diffTaskId ? 'inventory_diff' : exportType;
+  const exportParams =
+    tab === 'diff' && diffTaskId ? { taskId: diffTaskId } : undefined;
 
   return (
     <Card>
@@ -21,9 +33,19 @@ export default function ReportView({ roleLevel }: ReportViewProps) {
         <Typography.Title level={4} style={{ margin: 0 }}>
           统计报表
         </Typography.Title>
-        <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
-          导出 CSV
-        </Button>
+        <Space>
+          {tab !== 'diff' ? (
+            <Select
+              value={exportType}
+              style={{ width: 180 }}
+              options={EXPORT_OPTIONS}
+              onChange={setExportType}
+            />
+          ) : null}
+          <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
+            导出 CSV
+          </Button>
+        </Space>
       </Space>
 
       <ReportCharts
@@ -31,12 +53,14 @@ export default function ReportView({ roleLevel }: ReportViewProps) {
         onTabChange={setTab}
         departmentId={roleLevel === 2 ? user?.departmentId : undefined}
         restrictToSubtree={roleLevel === 2}
+        onDiffTaskChange={setDiffTaskId}
       />
 
       <ExportModal
         open={exportOpen}
         onClose={() => setExportOpen(false)}
-        exportType="asset_list"
+        exportType={activeExportType}
+        params={exportParams}
       />
     </Card>
   );

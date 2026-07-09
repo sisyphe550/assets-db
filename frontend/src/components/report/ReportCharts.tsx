@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Card, Col, Empty, Result, Row, Select, Spin, Tabs } from 'antd';
 import { ProTable, type ProColumns } from '@ant-design/pro-components';
 import type { CategoryStatItem, DeptStatItem, InventoryRecord } from '@/types/api';
@@ -32,6 +32,7 @@ interface ReportChartsProps {
   onTabChange: (tab: ReportTab) => void;
   departmentId?: number;
   restrictToSubtree?: boolean;
+  onDiffTaskChange?: (taskId: number | undefined) => void;
 }
 
 const chartFallback = (
@@ -45,8 +46,13 @@ export default function ReportCharts({
   onTabChange,
   departmentId,
   restrictToSubtree,
+  onDiffTaskChange,
 }: ReportChartsProps) {
   const [taskId, setTaskId] = useState<number | undefined>();
+
+  useEffect(() => {
+    onDiffTaskChange?.(taskId);
+  }, [taskId, onDiffTaskChange]);
   const { data: deptTree } = useGetDeptTreeQuery();
   const { data: deptData, isLoading: deptLoading, isError: deptError } = useGetAssetsByDeptQuery();
   const { data: categoryData, isLoading: categoryLoading } = useGetAssetsByCategoryQuery(
