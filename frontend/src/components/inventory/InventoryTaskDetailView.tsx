@@ -37,7 +37,7 @@ import {
   type SpreadsheetRow,
 } from '@/utils/inventory';
 
-const InventorySpreadsheet = lazy(() => import('@/components/inventory/UniverSpreadsheet'));
+const InventorySpreadsheet = lazy(() => import('@/components/inventory/InventorySpreadsheet'));
 
 interface InventoryTaskDetailViewProps {
   basePath: '/admin' | '/college' | '/user';
@@ -54,7 +54,8 @@ export default function InventoryTaskDetailView({
   const user = useAppSelector(selectCurrentUser);
   const [pollComparing, setPollComparing] = useState(false);
   const compareTriggered = useRef(false);
-  const hydratedTaskId = useRef<number | null>(null);
+  const hydratedRef = useRef(false);
+  const [rowsReady, setRowsReady] = useState(false);
 
   const { data: task, isLoading, isError, error, refetch } = useGetTaskQuery(taskIdNum, {
     skip: !taskIdNum,
@@ -109,12 +110,19 @@ export default function InventoryTaskDetailView({
   }, [basePath, user, task]);
 
   useEffect(() => {
+    hydratedRef.current = false;
+    setRows([]);
+    setRowsReady(false);
+  }, [taskIdNum]);
+
+  useEffect(() => {
     if (!taskIdNum || task?.status !== 1) return;
-    if (!expectedData?.list || expectedLoading || draftsLoading) return;
-    if (hydratedTaskId.current === taskIdNum) return;
+    if (!expectedData?.list?.length || expectedLoading || draftsLoading) return;
+    if (hydratedRef.current) return;
 
     setRows(buildRowsFromExpected(expectedData.list, draftsData?.list ?? [], user?.id));
-    hydratedTaskId.current = taskIdNum;
+    setRowsReady(true);
+    hydratedRef.current = true;
   }, [
     taskIdNum,
     task?.status,
@@ -122,6 +130,7 @@ export default function InventoryTaskDetailView({
     draftsData?.list,
     expectedLoading,
     draftsLoading,
+    user?.id,
   ]);
 
   const conflictMessages = useMemo(
@@ -332,13 +341,18 @@ export default function InventoryTaskDetailView({
             )
           }
         >
-          {expectedLoading || draftsLoading ? (
+          {expectedLoading || draftsLoading || !rowsReady ? (
             <Skeleton active paragraph={{ rows: 10 }} />
           ) : !expectedData?.list?.length ? (
             <Empty description="暂无应盘资产" />
           ) : (
             <Suspense fallback={<Skeleton active paragraph={{ rows: 10 }} />}>
-              <InventorySpreadsheet rows={rows} readOnly={readOnly} onChange={setRows} />
+              <InventorySpreadsheet
+                key={taskIdNum}
+                rows={rows}
+                readOnly={readOnly}
+                onChange={setRows}
+              />
             </Suspense>
           )}
           {conflictMessages.length > 0 && (

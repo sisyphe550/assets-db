@@ -44,6 +44,8 @@ export default function UniverSpreadsheet({ rows, readOnly, onChange }: UniverSp
   const structureKey = useMemo(() => rows.map((row) => row.key).join('|'), [rows]);
 
   useEffect(() => {
+    if (!rows.length) return;
+
     const container = containerRef.current;
     if (!container) return;
 
@@ -113,17 +115,21 @@ export default function UniverSpreadsheet({ rows, readOnly, onChange }: UniverSp
       setInitError(err instanceof Error ? err.message : 'Univer 初始化失败');
       return undefined;
     }
-  }, [readOnly, onChange]);
+  }, [readOnly, onChange, rows.length]);
 
   useEffect(() => {
     const api = apiRef.current;
-    if (!api || !ready) return;
+    if (!api || !ready || !rows.length) return;
 
     syncingRef.current = true;
     api.disposeUnit('inventory-workbook');
     api.createWorkbook(buildInventoryWorkbook(rowsRef.current));
     syncingRef.current = false;
-  }, [structureKey, ready]);
+  }, [structureKey, ready, rows.length]);
+
+  if (!rows.length) {
+    return <Skeleton active paragraph={{ rows: 10 }} />;
+  }
 
   if (initError) {
     return (
