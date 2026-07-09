@@ -10,13 +10,11 @@ import { useNavigate } from 'react-router-dom';
 import { ProTable, type ProColumns } from '@ant-design/pro-components';
 import type { WorkflowRequest } from '@/types/api';
 import StatCard from '@/components/report/StatCard';
-import { useGetAssetsByDeptQuery } from '@/store/api/reportApi';
-import { useGetAssetsQuery } from '@/store/api/assetApi';
+import { useGetAssetsByCategoryQuery, useGetAssetsByDeptQuery } from '@/store/api/reportApi';
 import { useGetRequestsQuery } from '@/store/api/workflowApi';
 import { useGetDeptTreeQuery } from '@/store/api/userApi';
 import StatusTag from '@/components/common/StatusTag';
 import {
-  aggregateByCategory,
   CHART_COLORS,
   collectSubtreeIds,
   enrichDeptStats,
@@ -45,10 +43,9 @@ export default function DashboardOverview({
   const restrictToSubtree = roleLevel === 2;
   const { data: deptTree } = useGetDeptTreeQuery();
   const { data: deptData, isLoading: deptLoading } = useGetAssetsByDeptQuery();
-  const { data: assetsData, isLoading: assetsLoading } = useGetAssetsQuery({
-    page: 1,
-    pageSize: 500,
-  });
+  const { data: categoryData, isLoading: categoryLoading } = useGetAssetsByCategoryQuery(
+    restrictToSubtree && departmentId ? { departmentId } : undefined,
+  );
   const { data: todoData, isLoading: todoLoading } = useGetRequestsQuery({
     page: 1,
     pageSize: 10,
@@ -99,15 +96,7 @@ export default function DashboardOverview({
     [deptItems],
   );
 
-  const categoryItems = useMemo(() => {
-    let assets = assetsData?.list ?? [];
-    if (subtreeIds) {
-      const allowed = new Set(subtreeIds);
-      assets = assets.filter((a) => allowed.has(a.departmentId));
-    }
-    return aggregateByCategory(assets);
-  }, [assetsData, subtreeIds]);
-
+  const categoryItems = categoryData?.items ?? [];
   const pieData = categoryItems.map((item) => ({ type: item.category, value: item.count }));
 
   const workflowColumns: ProColumns<WorkflowRequest>[] = [
@@ -193,7 +182,7 @@ export default function DashboardOverview({
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card title="按类别资产分布" loading={assetsLoading}>
+          <Card title="按类别资产分布" loading={categoryLoading}>
             {pieData.length === 0 ? (
               <Empty description="暂无数据" />
             ) : (

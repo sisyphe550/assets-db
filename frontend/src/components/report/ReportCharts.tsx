@@ -2,9 +2,9 @@ import { lazy, Suspense, useMemo, useState } from 'react';
 import { Card, Col, Empty, Result, Row, Select, Spin, Tabs } from 'antd';
 import { ProTable, type ProColumns } from '@ant-design/pro-components';
 import type { CategoryStatItem, DeptStatItem, InventoryRecord } from '@/types/api';
-import { useGetAssetsQuery } from '@/store/api/assetApi';
 import { useGetRecordsQuery, useGetTasksQuery } from '@/store/api/inventoryApi';
 import {
+  useGetAssetsByCategoryQuery,
   useGetAssetsByDeptQuery,
   useGetInventoryDiffQuery,
 } from '@/store/api/reportApi';
@@ -12,7 +12,6 @@ import { useGetDeptTreeQuery } from '@/store/api/userApi';
 import DiffSummary from '@/components/report/DiffSummary';
 import StatusTag from '@/components/common/StatusTag';
 import {
-  aggregateByCategory,
   CHART_COLORS,
   enrichDeptStats,
   filterDeptStatsByIds,
@@ -43,10 +42,9 @@ export default function ReportCharts({
   const [taskId, setTaskId] = useState<number | undefined>();
   const { data: deptTree } = useGetDeptTreeQuery();
   const { data: deptData, isLoading: deptLoading, isError: deptError } = useGetAssetsByDeptQuery();
-  const { data: assetsData, isLoading: assetsLoading } = useGetAssetsQuery({
-    page: 1,
-    pageSize: 500,
-  });
+  const { data: categoryData, isLoading: categoryLoading } = useGetAssetsByCategoryQuery(
+    restrictToSubtree && departmentId ? { departmentId } : undefined,
+  );
   const { data: tasksData } = useGetTasksQuery({ page: 1, pageSize: 100, status: 3 });
   const { data: diffData, isLoading: diffLoading } = useGetInventoryDiffQuery(taskId!, {
     skip: !taskId || activeTab !== 'diff',
@@ -80,14 +78,12 @@ export default function ReportCharts({
     return enriched;
   }, [deptData, deptMap, subtreeIds]);
 
-  const categoryItems: CategoryStatItem[] = useMemo(() => {
-    let assets = assetsData?.list ?? [];
-    if (subtreeIds) {
-      const allowed = new Set(subtreeIds);
-      assets = assets.filter((a) => allowed.has(a.departmentId));
-    }
-    return aggregateByCategory(assets);
-  }, [assetsData, subtreeIds]);
+  const categoryItems: CategoryStatItem[] = categoryData?.items ?? [];
+
+  const diffRecords = useMemo(
+    () => (recordsData?.list ?? []).filter((r) => r.diffStatus === 2 || r.diffStatus === 3),
+    [recordsData?.list],
+  );
 
   const deptColumns: ProColumns<DeptStatItem>[] = [
     { title: '部门', dataIndex: 'departmentName', width: 180 },
@@ -191,7 +187,7 @@ export default function ReportCharts({
       children: (
         <Row gutter={16}>
           <Col xs={24} lg={10}>
-            <Card title="资产类型分布" loading={assetsLoading}>
+            <Card title="资产类型分布" loading={categoryLoading}>
               {categoryChartData.length === 0 ? (
                 <Empty description="暂无数据" />
               ) : (
@@ -217,7 +213,7 @@ export default function ReportCharts({
                 search={false}
                 options={false}
                 pagination={false}
-                loading={assetsLoading}
+                loading={categoryLoading}
                 dataSource={categoryItems}
                 columns={categoryColumns}
               />
@@ -259,7 +255,7 @@ export default function ReportCharts({
                   options={false}
                   pagination={false}
                   loading={recordsLoading}
-                  dataSource={recordsData?.list ?? []}
+                  dataSource={diffRecords}
                   columns={diffRecordColumns}
                   scroll={{ x: 720 }}
                 />

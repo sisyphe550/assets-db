@@ -48,11 +48,11 @@ export default function InventoryTaskDetailView({
   const taskIdNum = Number(id ?? taskId);
   const navigate = useNavigate();
   const user = useAppSelector(selectCurrentUser);
-  const [pollAfterArchive, setPollAfterArchive] = useState(false);
+  const [pollComparing, setPollComparing] = useState(false);
 
   const { data: task, isLoading, isError, error, refetch } = useGetTaskQuery(taskIdNum, {
     skip: !taskIdNum,
-    pollingInterval: pollAfterArchive ? 2000 : 0,
+    pollingInterval: pollComparing ? 2000 : 0,
   });
   const { data: expectedData, isLoading: expectedLoading } = useGetExpectedAssetsQuery(
     taskIdNum,
@@ -68,10 +68,13 @@ export default function InventoryTaskDetailView({
   const [archiveTask, { isLoading: archiving }] = useArchiveTaskMutation();
 
   useEffect(() => {
-    if (task?.status === 3 && pollAfterArchive) {
-      setPollAfterArchive(false);
+    if (task?.status === 2) {
+      setPollComparing(true);
     }
-  }, [task?.status, pollAfterArchive]);
+    if (task?.status === 3) {
+      setPollComparing(false);
+    }
+  }, [task?.status]);
 
   const readOnly = !task || task.status !== 1;
 
@@ -134,7 +137,7 @@ export default function InventoryTaskDetailView({
       onOk: async () => {
         try {
           await archiveTask({ id: task!.id }).unwrap();
-          setPollAfterArchive(true);
+          setPollComparing(true);
           message.success('已归档，正在比对…');
         } catch (err: unknown) {
           const e = err as { message?: string };

@@ -181,10 +181,22 @@ func (m *InvModel) ArchiveTask(ctx context.Context, taskID int64, records []Inve
 }
 
 func (m *InvModel) GetRecords(ctx context.Context, taskID int64) ([]InventoryRecord, error) {
-	rows, err := m.db.QueryContext(ctx,
-		`SELECT id, task_id, asset_id, found_asset_desc, operator_id, is_scanned, actual_location, diff_status
-		 FROM inventory_record WHERE task_id=$1`, taskID)
-	if err != nil { return nil, err }
+	return m.ListRecords(ctx, taskID, nil)
+}
+
+func (m *InvModel) ListRecords(ctx context.Context, taskID int64, diffStatus *int16) ([]InventoryRecord, error) {
+	query := `SELECT id, task_id, asset_id, found_asset_desc, operator_id, is_scanned, actual_location, diff_status
+		 FROM inventory_record WHERE task_id=$1`
+	args := []any{taskID}
+	if diffStatus != nil {
+		query += ` AND diff_status=$2`
+		args = append(args, *diffStatus)
+	}
+	query += ` ORDER BY id`
+	rows, err := m.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
 	defer rows.Close()
 	var list []InventoryRecord
 	for rows.Next() {

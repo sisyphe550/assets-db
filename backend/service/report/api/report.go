@@ -41,6 +41,7 @@ func main() {
 	authMux := http.NewServeMux()
 
 	authMux.HandleFunc("/api/v1/report/assets/by-dept", h.AssetsByDept)
+	authMux.HandleFunc("/api/v1/report/assets/by-category", h.AssetsByCategory)
 	authMux.HandleFunc("/api/v1/report/inventory/diff/", h.InventoryDiff)
 	authMux.HandleFunc("/api/v1/report/export", func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/download") {

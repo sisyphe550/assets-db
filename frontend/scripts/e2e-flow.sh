@@ -6,6 +6,7 @@ BASE_USER="http://127.0.0.1:8888/api/v1"
 BASE_ASSET="http://127.0.0.1:8889/api/v1"
 BASE_WF="http://127.0.0.1:8890/api/v1"
 BASE_INV="http://127.0.0.1:8891/api/v1"
+BASE_RPT="http://127.0.0.1:8892/api/v1"
 PASS="Test@123456"
 
 login() {
@@ -74,14 +75,19 @@ echo "  组织树根节点: $ROOT_NAME"
 echo "[菜单配置]"
 ADMIN_MENU=$(grep -c "key: '/admin" /Users/sisyphus/Code/Go/assets-db/frontend/src/config/menu.ts || true)
 COLLEGE_MENU=$(grep -c "key: '/college" /Users/sisyphus/Code/Go/assets-db/frontend/src/config/menu.ts || true)
-echo "  校级菜单项: $ADMIN_MENU (期望 7)"
-echo "  院级菜单项: $COLLEGE_MENU (期望 5，含统计报表)"
+echo "  校级菜单项: $ADMIN_MENU (期望 8)"
+echo "  院级菜单项: $COLLEGE_MENU (期望 6，含用户管理)"
 
-# 5. 院级无用户管理菜单
+# 5. 院级用户管理菜单
 if grep -q "/college/users" /Users/sisyphus/Code/Go/assets-db/frontend/src/config/menu.ts; then
   echo "  院级用户管理菜单: 已配置"
 else
-  echo "  院级用户管理菜单: 未配置（已知限制，API 已支持）"
+  echo "  院级用户管理菜单: 未配置"
 fi
+
+# 6. 按类别统计 API
+BY_CAT=$(curl -s -H "Authorization: Bearer $SCHOOL" "$BASE_RPT/report/assets/by-category")
+CAT_COUNT=$(echo "$BY_CAT" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('data',{}).get('items',[])))" 2>/dev/null || echo 0)
+echo "  按类别统计 items=$CAT_COUNT (期望≥1)"
 
 echo "=== 完成 ==="

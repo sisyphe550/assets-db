@@ -1,15 +1,18 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/sisyphus550/assets-db/backend/pkg/dept"
 	"github.com/sisyphus550/assets-db/backend/pkg/errx"
 	"github.com/sisyphus550/assets-db/backend/pkg/middleware"
 )
@@ -53,6 +56,10 @@ func (h *ReportHandler) AssetsByDept(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, it)
 	}
+	if len(items) == 0 {
+		h.assetsByDeptLive(w, r)
+		return
+	}
 	writeOK(w, map[string]any{"items": items})
 }
 
@@ -81,6 +88,81 @@ func (h *ReportHandler) assetsByDeptLive(w http.ResponseWriter, r *http.Request)
 		items = append(items, it)
 	}
 	writeOK(w, map[string]any{"items": items})
+}
+
+// GET /report/assets/by-category
+func (h *ReportHandler) AssetsByCategory(w http.ResponseWriter, r *http.Request) {
+	roleLevel, _ := middleware.GetRoleLevel(r.Context())
+	userDeptID, _ := middleware.GetDeptID(r.Context())
+
+	var deptIDs []int64
+	if deptFilter := r.URL.Query().Get("departmentId"); deptFilter != "" {
+		id, _ := strconv.ParseInt(deptFilter, 10, 64)
+		if id > 0 {
+			deptIDs = h.deptSubtreeIDs(r.Context(), id)
+		}
+	} else if roleLevel == 2 {
+		deptIDs = h.deptSubtreeIDs(r.Context(), userDeptID)
+	}
+
+	query := `SELECT category, COUNT(*), COALESCE(SUM(price), 0)
+		 FROM asset_ledger WHERE deleted_at IS NULL`
+	args := []any{}
+	if len(deptIDs) > 0 {
+		ph := make([]string, len(deptIDs))
+		for i, id := range deptIDs {
+			ph[i] = "?"
+			args = append(args, id)
+		}
+		query += ` AND department_id IN (` + strings.Join(ph, ",") + `)`
+	}
+	query += ` GROUP BY category ORDER BY COUNT(*) DESC`
+
+	rows, err := h.MySQL.QueryContext(r.Context(), query, args...)
+	if err != nil {
+		writeErr(w, errx.ErrInternal)
+		return
+	}
+	defer rows.Close()
+
+	type item struct {
+		Category   string  `json:"category"`
+		Count      int     `json:"count"`
+		TotalValue float64 `json:"totalValue"`
+	}
+	var items []item
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.Category, &it.Count, &it.TotalValue); err != nil {
+			continue
+		}
+		items = append(items, it)
+	}
+	if items == nil {
+		items = []item{}
+	}
+	writeOK(w, map[string]any{"items": items})
+}
+
+func (h *ReportHandler) deptSubtreeIDs(ctx context.Context, rootDeptID int64) []int64 {
+	rows, err := h.PG.QueryContext(ctx, `SELECT id, parent_id, path FROM sys_department`)
+	if err != nil {
+		return []int64{rootDeptID}
+	}
+	defer rows.Close()
+	var all []dept.Department
+	for rows.Next() {
+		var d dept.Department
+		if err := rows.Scan(&d.ID, &d.ParentID, &d.Path); err != nil {
+			return []int64{rootDeptID}
+		}
+		all = append(all, d)
+	}
+	ids, err := dept.SubtreeIDs(all, rootDeptID)
+	if err != nil || len(ids) == 0 {
+		return []int64{rootDeptID}
+	}
+	return ids
 }
 
 // GET /report/inventory/diff/:taskId
@@ -147,7 +229,7 @@ func (h *ReportHandler) ExportStatus(w http.ResponseWriter, r *http.Request) {
 	var errMsg *string
 	h.ReportDB.QueryRowContext(r.Context(),
 		`SELECT status, error_message FROM rpt_export_job WHERE id=$1`, jobID).Scan(&status, &errMsg)
-	writeOK(w, map[string]any{"jobId": jobID, "status": status})
+	writeOK(w, map[string]any{"jobId": jobID, "status": status, "errorMessage": errMsg})
 }
 
 // GET /report/export/:jobId/download

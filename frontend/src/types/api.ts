@@ -223,6 +223,10 @@ export interface CategoryStatItem {
   totalValue: number;
 }
 
+export interface CategoryStatResponse {
+  items: CategoryStatItem[];
+}
+
 export interface InventoryDiffReport {
   match: number;
   surplus: number;

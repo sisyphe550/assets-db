@@ -218,7 +218,7 @@ func (h *InvHandler) countExpectedAssets(r *http.Request, scopeDeptID int64) int
 	if h.AssetRPC == "" {
 		return 0
 	}
-	body, _ := json.Marshal(map[string]any{"deptId": scopeDeptID})
+	body, _ := json.Marshal(map[string]any{"deptIds": []int64{scopeDeptID}})
 	resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return 0
@@ -448,7 +448,7 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 	// Step 2: 从 asset-rpc 获取 scope 内所有账面资产
 	bookAssets := make(map[string]map[string]any)
 	if h.AssetRPC != "" {
-		body, _ := json.Marshal(map[string]any{"deptId": task.ScopeDeptID})
+		body, _ := json.Marshal(map[string]any{"deptIds": []int64{task.ScopeDeptID}})
 		resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
 		if err == nil {
 			defer resp.Body.Close()
@@ -542,12 +542,122 @@ func getCellStr(cells map[string]any, key string) string {
 // GET /inventory/tasks/:id/records
 func (h *InvHandler) Records(w http.ResponseWriter, r *http.Request) {
 	id := parseIDForAction(r.URL.Path, "/tasks/", "/records")
-	records, err := model.NewInvModel(h.DB).GetRecords(r.Context(), id)
+	if id == 0 {
+		writeErr(w, errx.ErrInvalidParam)
+		return
+	}
+
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	pageSize, _ := strconv.Atoi(q.Get("pageSize"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	var diffFilter *int16
+	if s := q.Get("diffStatus"); s != "" {
+		v, _ := strconv.Atoi(s)
+		st := int16(v)
+		diffFilter = &st
+	}
+
+	im := model.NewInvModel(h.DB)
+	task, err := im.FindTask(r.Context(), id)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeOK(w, map[string]any{"records": records, "total": len(records)})
+
+	records, err := im.ListRecords(r.Context(), id, diffFilter)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+
+	assetMap := h.fetchScopeAssetMap(r.Context(), task.ScopeDeptID)
+	all := make([]map[string]any, 0, len(records))
+	for _, rec := range records {
+		all = append(all, recordToMap(rec, assetMap))
+	}
+
+	total := len(all)
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+
+	writeOK(w, map[string]any{
+		"list":     all[start:end],
+		"page":     page,
+		"pageSize": pageSize,
+		"total":    total,
+	})
+}
+
+func (h *InvHandler) fetchScopeAssetMap(ctx context.Context, scopeDeptID int64) map[int64]map[string]any {
+	result := make(map[int64]map[string]any)
+	if h.AssetRPC == "" {
+		return result
+	}
+	body, _ := json.Marshal(map[string]any{"deptIds": []int64{scopeDeptID}})
+	resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return result
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	var rpcResult struct {
+		Assets []map[string]any `json:"assets"`
+	}
+	if json.Unmarshal(respBody, &rpcResult) != nil {
+		return result
+	}
+	for _, a := range rpcResult.Assets {
+		id := rpcAssetIDInt64(a)
+		if id > 0 {
+			result[id] = a
+		}
+	}
+	return result
+}
+
+func recordToMap(rec model.InventoryRecord, assets map[int64]map[string]any) map[string]any {
+	assetNo := "-"
+	name := rec.FoundAssetDesc
+	bookLocation := "-"
+	if rec.AssetID != nil {
+		if a, ok := assets[*rec.AssetID]; ok {
+			if no := rpcAssetNo(a); no != "" {
+				assetNo = no
+			}
+			if n := rpcAssetName(a); n != "" {
+				name = n
+			}
+			if loc := rpcAssetLocation(a); loc != "" {
+				bookLocation = loc
+			}
+		}
+	}
+	if name == "" {
+		name = "-"
+	}
+	return map[string]any{
+		"assetNo":        assetNo,
+		"name":           name,
+		"bookLocation":   bookLocation,
+		"actualLocation": rec.ActualLocation,
+		"diffStatus":     rec.DiffStatus,
+	}
 }
 
 // GET /inventory/tasks/:id/expected-assets
@@ -560,7 +670,7 @@ func (h *InvHandler) ExpectedAssets(w http.ResponseWriter, r *http.Request) {
 	}
 	// 通过 asset-rpc 获取 scope 内资产列表
 	if h.AssetRPC != "" {
-		body, _ := json.Marshal(map[string]any{"deptId": task.ScopeDeptID})
+		body, _ := json.Marshal(map[string]any{"deptIds": []int64{task.ScopeDeptID}})
 		resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
 		if err == nil {
 			defer resp.Body.Close()

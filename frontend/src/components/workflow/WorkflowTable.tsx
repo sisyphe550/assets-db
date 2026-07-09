@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Empty, Result } from 'antd';
 import { ProTable, type ProColumns } from '@ant-design/pro-components';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { WorkflowListParams, WorkflowRequest } from '@/types/api';
 import { useGetRequestsQuery } from '@/store/api/workflowApi';
 import StatusTag from '@/components/common/StatusTag';
@@ -24,10 +24,23 @@ export default function WorkflowTable({
   showCreateLink = false,
 }: WorkflowTableProps) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [params, setParams] = useState<WorkflowListParams>({ page: 1, pageSize: 20, scope });
   const [detailId, setDetailId] = useState<number | null>(null);
 
   const { data, isLoading, isError, refetch } = useGetRequestsQuery(params);
+
+  useEffect(() => {
+    const highlight = searchParams.get('highlight');
+    if (highlight) {
+      const id = Number(highlight);
+      if (id > 0) {
+        setDetailId(id);
+        searchParams.delete('highlight');
+        setSearchParams(searchParams, { replace: true });
+      }
+    }
+  }, [searchParams, setSearchParams]);
 
   const columns: ProColumns<WorkflowRequest>[] = useMemo(
     () => [
