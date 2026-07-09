@@ -27,6 +27,7 @@ const CollegeAssetList = lazy(() => import('@/pages/college/AssetListPage'));
 const CollegeAssetDetail = lazy(() => import('@/pages/college/AssetDetailPage'));
 const CollegeAssetCreate = lazy(() => import('@/pages/admin/AssetCreatePage'));
 const CollegeWorkflowTodo = lazy(() => import('@/pages/college/WorkflowTodoPage'));
+const CollegeWorkflowList = lazy(() => import('@/pages/college/WorkflowListPage'));
 const CollegeInventoryList = lazy(() => import('@/pages/college/InventoryTaskListPage'));
 const CollegeInventoryCreate = lazy(() => import('@/pages/college/InventoryTaskCreatePage'));
 const CollegeInventoryDetail = lazy(() => import('@/pages/college/InventoryTaskDetailPage'));
@@ -83,6 +84,7 @@ const router = createBrowserRouter([
       { path: 'assets/create', element: withSuspense(<CollegeAssetCreate />) },
       { path: 'assets/:id', element: withSuspense(<CollegeAssetDetail />) },
       { path: 'workflow/todo', element: withSuspense(<CollegeWorkflowTodo />) },
+      { path: 'workflow/all', element: withSuspense(<CollegeWorkflowList />) },
       { path: 'inventory/tasks', element: withSuspense(<CollegeInventoryList />) },
       { path: 'inventory/tasks/create', element: withSuspense(<CollegeInventoryCreate />) },
       { path: 'inventory/tasks/:id', element: withSuspense(<CollegeInventoryDetail />) },

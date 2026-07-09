@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/sisyphus550/assets-db/backend/pkg/errx"
 )
 
@@ -79,7 +80,15 @@ func (m *WorkflowModel) FindByID(ctx context.Context, id int64) (*WorkflowReques
 }
 
 // List 查询工单列表
-func (m *WorkflowModel) List(ctx context.Context, scope string, uid int64, deptIDs []int64, assetID *int64, page, pageSize int) ([]WorkflowRequest, int, error) {
+func (m *WorkflowModel) List(
+	ctx context.Context,
+	scope string,
+	uid int64,
+	deptIDs []int64,
+	stageFilter *int16,
+	assetID *int64,
+	page, pageSize int,
+) ([]WorkflowRequest, int, error) {
 	var query, countQ string
 	var args []any
 	argIdx := 1
@@ -113,6 +122,20 @@ func (m *WorkflowModel) List(ctx context.Context, scope string, uid int64, deptI
 		query += ` AND asset_id=$` + itoa(argIdx)
 		countQ += ` AND asset_id=$` + itoa(argIdx)
 		args = append(args, *assetID)
+		argIdx++
+	}
+
+	if len(deptIDs) > 0 {
+		query += ` AND department_id = ANY($` + itoa(argIdx) + `)`
+		countQ += ` AND department_id = ANY($` + itoa(argIdx) + `)`
+		args = append(args, pq.Array(deptIDs))
+		argIdx++
+	}
+
+	if stageFilter != nil {
+		query += ` AND current_stage=$` + itoa(argIdx)
+		countQ += ` AND current_stage=$` + itoa(argIdx)
+		args = append(args, *stageFilter)
 		argIdx++
 	}
 

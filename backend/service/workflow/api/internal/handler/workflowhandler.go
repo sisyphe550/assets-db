@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"io"
@@ -11,6 +12,7 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/sisyphus550/assets-db/backend/pkg/dept"
 	"github.com/sisyphus550/assets-db/backend/pkg/errx"
 	"github.com/sisyphus550/assets-db/backend/pkg/middleware"
 	"github.com/sisyphus550/assets-db/backend/service/workflow/model"
@@ -73,14 +75,45 @@ func (h *WorkflowHandler) Create(w http.ResponseWriter, r *http.Request) {
 // GET /workflow/requests
 func (h *WorkflowHandler) List(w http.ResponseWriter, r *http.Request) {
 	uid, _ := middleware.GetUID(r.Context())
+	roleLevel, _ := middleware.GetRoleLevel(r.Context())
+	adminDeptID, _ := middleware.GetDeptID(r.Context())
+
 	q := r.URL.Query()
 	page, _ := strconv.Atoi(q.Get("page"))
-	if page < 1 { page = 1 }
+	if page < 1 {
+		page = 1
+	}
 	pageSize, _ := strconv.Atoi(q.Get("pageSize"))
-	if pageSize < 1 || pageSize > 100 { pageSize = 20 }
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
 	scope := q.Get("scope")
 	if scope == "" {
 		scope = "my"
+	}
+
+	if scope == "all" && roleLevel >= 3 {
+		writeErr(w, errx.ErrForbidden)
+		return
+	}
+
+	var deptIDs []int64
+	var stageFilter *int16
+	switch scope {
+	case "todo":
+		switch roleLevel {
+		case 1:
+			stage := int16(2)
+			stageFilter = &stage
+		case 2:
+			deptIDs = h.deptSubtreeIDs(r.Context(), adminDeptID)
+			stage := int16(1)
+			stageFilter = &stage
+		}
+	case "all":
+		if roleLevel == 2 {
+			deptIDs = h.deptSubtreeIDs(r.Context(), adminDeptID)
+		}
 	}
 
 	var assetIDFilter *int64
@@ -91,12 +124,35 @@ func (h *WorkflowHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	list, total, err := model.NewWorkflowModel(h.DB).List(r.Context(), scope, uid, nil, assetIDFilter, page, pageSize)
+	list, total, err := model.NewWorkflowModel(h.DB).List(
+		r.Context(), scope, uid, deptIDs, stageFilter, assetIDFilter, page, pageSize,
+	)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	writeOK(w, map[string]any{"list": list, "page": page, "pageSize": pageSize, "total": total})
+}
+
+func (h *WorkflowHandler) deptSubtreeIDs(ctx context.Context, rootDeptID int64) []int64 {
+	rows, err := h.DB.QueryContext(ctx, `SELECT id, parent_id, path FROM sys_department`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var all []dept.Department
+	for rows.Next() {
+		var d dept.Department
+		if err := rows.Scan(&d.ID, &d.ParentID, &d.Path); err != nil {
+			return nil
+		}
+		all = append(all, d)
+	}
+	ids, err := dept.SubtreeIDs(all, rootDeptID)
+	if err != nil {
+		return nil
+	}
+	return ids
 }
 
 // GET /workflow/requests/:id
