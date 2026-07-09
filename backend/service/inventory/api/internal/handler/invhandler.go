@@ -293,10 +293,10 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 逐条处理
-	var success []string
-	var conflicts []map[string]any
-	var failures []map[string]any
+  // 逐条处理（初始化为空切片，避免 JSON 序列化为 null）
+  success := make([]string, 0)
+  conflicts := make([]map[string]any, 0)
+  failures := make([]map[string]any, 0)
 
 	for _, item := range req.Items {
 		// 1. Redis 分布式锁

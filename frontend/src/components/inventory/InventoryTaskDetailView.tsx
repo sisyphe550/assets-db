@@ -128,12 +128,15 @@ export default function InventoryTaskDetailView({
     try {
       const result = await submitRecords({ taskId: taskIdNum, items }).unwrap();
       setRows((prev) => applySubmitResult(prev, result));
-      if (result.conflicts.length) {
-        message.error(`有 ${result.conflicts.length} 条冲突，请检查标红行`);
-      } else if (result.failures.length) {
-        message.warning(`有 ${result.failures.length} 条提交失败`);
+      const conflicts = result.conflicts ?? [];
+      const failures = result.failures ?? [];
+      const success = result.success ?? [];
+      if (conflicts.length) {
+        message.error(`有 ${conflicts.length} 条冲突，请检查标红行`);
+      } else if (failures.length) {
+        message.warning(`有 ${failures.length} 条提交失败`);
       } else {
-        message.success(`成功提交 ${result.success.length} 条`);
+        message.success(`成功提交 ${success.length} 条`);
       }
     } catch (err: unknown) {
       const e = err as { message?: string };

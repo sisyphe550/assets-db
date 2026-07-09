@@ -37,14 +37,18 @@ export function buildSubmitItems(rows: SpreadsheetRow[]): SubmitItem[] {
 export function applySubmitResult(
   rows: SpreadsheetRow[],
   result: {
-    success: string[];
-    conflicts: { assetNo: string; message: string }[];
-    failures: { assetNo: string; message: string }[];
+    success?: string[] | null;
+    conflicts?: { assetNo: string; message: string }[] | null;
+    failures?: { assetNo: string; message: string }[] | null;
   },
 ): SpreadsheetRow[] {
-  const conflictMap = new Map(result.conflicts.map((c) => [c.assetNo, c.message]));
-  const failureMap = new Map(result.failures.map((f) => [f.assetNo, f.message]));
-  const successSet = new Set(result.success);
+  const success = result.success ?? [];
+  const conflicts = result.conflicts ?? [];
+  const failures = result.failures ?? [];
+
+  const conflictMap = new Map(conflicts.map((c) => [c.assetNo, c.message]));
+  const failureMap = new Map(failures.map((f) => [f.assetNo, f.message]));
+  const successSet = new Set(success);
 
   return rows.map((row) => {
     if (conflictMap.has(row.assetNo)) {

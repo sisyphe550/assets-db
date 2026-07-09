@@ -45,6 +45,15 @@ describe('inventory utils', () => {
     expect(buildSubmitItems([surplus])).toHaveLength(1);
   });
 
+  it('handles null submit result arrays from API', () => {
+    const next = applySubmitResult([baseRow], {
+      success: ['EQUIP-2026-0001'],
+      conflicts: null,
+      failures: null,
+    });
+    expect(next[0].rowState).toBe('success');
+  });
+
   it('marks conflict and success rows', () => {
     const next = applySubmitResult([baseRow], {
       success: ['EQUIP-2026-0001'],
