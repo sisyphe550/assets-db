@@ -19,15 +19,39 @@ function draftCell(cells: Record<string, string> | undefined, key: string): stri
   return v == null ? '' : String(v);
 }
 
+function groupDraftsByAsset(drafts: InventoryDraft[]): Map<string, InventoryDraft[]> {
+  const map = new Map<string, InventoryDraft[]>();
+  for (const d of drafts) {
+    const list = map.get(d.assetNo) ?? [];
+    list.push(d);
+    map.set(d.assetNo, list);
+  }
+  return map;
+}
+
+function resolveDraft(
+  list: InventoryDraft[] | undefined,
+  currentUserId?: number,
+): { draft?: InventoryDraft; ownDraft: boolean } {
+  if (!list?.length) return { ownDraft: false };
+  if (currentUserId != null) {
+    const mine = list.find((d) => d.operatorId === currentUserId);
+    if (mine) return { draft: mine, ownDraft: true };
+    return { draft: list[0], ownDraft: false };
+  }
+  return { draft: list[0], ownDraft: true };
+}
+
 export function buildRowsFromExpected(
   expected: ExpectedAsset[],
   drafts: InventoryDraft[],
+  currentUserId?: number,
 ): SpreadsheetRow[] {
-  const draftMap = new Map(drafts.map((d) => [d.assetNo, d]));
+  const byAsset = groupDraftsByAsset(drafts);
   const expectedNos = new Set(expected.map((e) => e.assetNo));
 
   const rows: SpreadsheetRow[] = expected.map((item) => {
-    const draft = draftMap.get(item.assetNo);
+    const { draft, ownDraft } = resolveDraft(byAsset.get(item.assetNo), currentUserId);
     const cells = draft?.modifiedCells;
     return {
       key: item.assetNo,
@@ -38,24 +62,27 @@ export function buildRowsFromExpected(
       notes: draftCell(cells, 'temp_notes'),
       foundName: draftCell(cells, 'found_name'),
       isSurplus: false,
-      expectedUpdatedAt: draft?.updatedAt ?? item.expectedUpdatedAt ?? null,
+      expectedUpdatedAt:
+        ownDraft && draft ? draft.updatedAt : item.expectedUpdatedAt ?? null,
     };
   });
 
-  for (const draft of drafts) {
-    if (expectedNos.has(draft.assetNo)) continue;
-    const cells = draft.modifiedCells;
+  for (const [assetNo, list] of byAsset) {
+    if (expectedNos.has(assetNo)) continue;
+    const { draft: picked, ownDraft } = resolveDraft(list, currentUserId);
+    if (!picked) continue;
+    const cells = picked.modifiedCells;
     const name = draftCell(cells, 'found_name');
     rows.push({
-      key: draft.assetNo,
-      assetNo: draft.assetNo,
+      key: picked.assetNo,
+      assetNo: picked.assetNo,
       name,
       bookLocation: draftCell(cells, 'book_location') || '-',
       actualLocation: draftCell(cells, 'actual_location'),
       notes: draftCell(cells, 'temp_notes'),
       foundName: name,
       isSurplus: true,
-      expectedUpdatedAt: draft.updatedAt,
+      expectedUpdatedAt: ownDraft ? picked.updatedAt : null,
     });
   }
 
@@ -97,11 +124,16 @@ export function buildSubmitItems(rows: SpreadsheetRow[]): SubmitItem[] {
 export function mergeDraftTimestamps(
   rows: SpreadsheetRow[],
   drafts: InventoryDraft[],
+  currentUserId?: number,
 ): SpreadsheetRow[] {
-  const draftMap = new Map(drafts.map((d) => [d.assetNo, d.updatedAt]));
+  const ownDrafts =
+    currentUserId != null
+      ? drafts.filter((d) => d.operatorId === currentUserId)
+      : drafts;
+  const draftMap = new Map(ownDrafts.map((d) => [d.assetNo, d.updatedAt]));
   return rows.map((row) => {
     const updatedAt = draftMap.get(row.assetNo);
-    return updatedAt ? { ...row, expectedUpdatedAt: updatedAt } : row;
+    return updatedAt ? { ...row, expectedUpdatedAt: updatedAt, rowState: undefined, rowMessage: undefined } : row;
   });
 }
 

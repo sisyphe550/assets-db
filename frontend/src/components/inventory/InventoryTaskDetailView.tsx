@@ -113,7 +113,7 @@ export default function InventoryTaskDetailView({
     if (!expectedData?.list || expectedLoading || draftsLoading) return;
     if (hydratedTaskId.current === taskIdNum) return;
 
-    setRows(buildRowsFromExpected(expectedData.list, draftsData?.list ?? []));
+    setRows(buildRowsFromExpected(expectedData.list, draftsData?.list ?? [], user?.id));
     hydratedTaskId.current = taskIdNum;
   }, [
     taskIdNum,
@@ -125,7 +125,11 @@ export default function InventoryTaskDetailView({
   ]);
 
   const conflictMessages = useMemo(
-    () => rows.filter((r) => r.rowState === 'conflict').map((r) => r.rowMessage).filter(Boolean),
+    () => [
+      ...new Set(
+        rows.filter((r) => r.rowState === 'conflict').map((r) => r.rowMessage).filter(Boolean),
+      ),
+    ],
     [rows],
   );
 
@@ -152,7 +156,7 @@ export default function InventoryTaskDetailView({
       setRows((prev) => applySubmitResult(prev, result));
       const { data: freshDrafts } = await refetchDrafts();
       if (freshDrafts?.list) {
-        setRows((prev) => mergeDraftTimestamps(prev, freshDrafts.list));
+        setRows((prev) => mergeDraftTimestamps(prev, freshDrafts.list, user?.id));
       }
       const conflicts = result.conflicts ?? [];
       const failures = result.failures ?? [];

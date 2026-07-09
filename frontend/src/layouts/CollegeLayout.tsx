@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import type { MenuProps } from 'antd';
 import { TopHeader, SidebarMenu } from '@/components/common/AppShell';
 import { collegeMenu } from '@/config/menu';
+import { matchMenuSelectedKey } from '@/config/menuSelected';
 import { useEffect } from 'react';
 import { useGetMeQuery } from '@/store/api/authApi';
 import { useAppDispatch } from '@/store/hooks';
@@ -26,7 +27,7 @@ export default function CollegeLayout() {
     <Layout style={{ minHeight: '100vh' }}>
       <SidebarMenu
         items={collegeMenu}
-        selectedKey={location.pathname}
+        selectedKey={matchMenuSelectedKey(location.pathname, collegeMenu)}
         onMenuClick={onMenuClick}
       />
       <Layout>

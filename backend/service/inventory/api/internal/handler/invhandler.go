@@ -798,6 +798,7 @@ func (h *InvHandler) Drafts(w http.ResponseWriter, r *http.Request) {
 
 	type draftDoc struct {
 		AssetNo       string         `bson:"asset_no"`
+		OperatorID    int64          `bson:"operator_id"`
 		ModifiedCells map[string]any `bson:"modified_cells"`
 		UpdatedAt     time.Time      `bson:"updated_at"`
 	}
@@ -810,6 +811,7 @@ func (h *InvHandler) Drafts(w http.ResponseWriter, r *http.Request) {
 		}
 		list = append(list, map[string]any{
 			"assetNo":       doc.AssetNo,
+			"operatorId":    doc.OperatorID,
 			"modifiedCells": doc.ModifiedCells,
 			"updatedAt":     formatDraftUpdatedAt(doc.UpdatedAt),
 		})

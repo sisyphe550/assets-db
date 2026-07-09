@@ -178,4 +178,51 @@ describe('inventory utils', () => {
     expect(merged[0].actualLocation).toBe('本地未保存编辑');
     expect(merged[0].expectedUpdatedAt).toBe('2026-07-09T04:00:00.000Z');
   });
+
+  it('does not attach CAS timestamp from another operator draft', () => {
+    const rows = buildRowsFromExpected(
+      [
+        {
+          assetId: 1,
+          assetNo: 'EQUIP-2026-0001',
+          name: '激光切割机',
+          bookLocation: '101',
+        },
+      ],
+      [
+        {
+          assetNo: 'EQUIP-2026-0001',
+          operatorId: 10003,
+          modifiedCells: { actual_location: '学生填写' },
+          updatedAt: '2026-07-09T04:00:00.000Z',
+        },
+      ],
+      10002,
+    );
+    expect(rows[0].actualLocation).toBe('学生填写');
+    expect(rows[0].expectedUpdatedAt).toBeNull();
+  });
+
+  it('uses own operator draft for CAS timestamp', () => {
+    const rows = buildRowsFromExpected(
+      [
+        {
+          assetId: 1,
+          assetNo: 'EQUIP-2026-0001',
+          name: '激光切割机',
+          bookLocation: '101',
+        },
+      ],
+      [
+        {
+          assetNo: 'EQUIP-2026-0001',
+          operatorId: 10002,
+          modifiedCells: { actual_location: '院管填写' },
+          updatedAt: '2026-07-09T05:00:00.000Z',
+        },
+      ],
+      10002,
+    );
+    expect(rows[0].expectedUpdatedAt).toBe('2026-07-09T05:00:00.000Z');
+  });
 });

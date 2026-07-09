@@ -168,6 +168,7 @@ export interface ExpectedAsset {
 
 export interface InventoryDraft {
   assetNo: string;
+  operatorId?: number;
   modifiedCells: Record<string, string>;
   updatedAt: string;
 }

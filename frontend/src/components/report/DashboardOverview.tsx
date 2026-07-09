@@ -122,9 +122,13 @@ export default function DashboardOverview({
     {
       title: '操作',
       width: 80,
-      render: (_, r) => (
-        <a onClick={() => navigate(`${basePath}/workflow/todo?highlight=${r.id}`)}>查看</a>
-      ),
+      render: (_, r) => {
+        const workflowPath =
+          roleLevel === 1 ? `${basePath}/workflow/all` : `${basePath}/workflow/todo`;
+        return (
+          <a onClick={() => navigate(`${workflowPath}?highlight=${r.id}`)}>查看</a>
+        );
+      },
     },
   ];
 
