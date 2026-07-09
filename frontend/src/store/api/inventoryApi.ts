@@ -66,6 +66,7 @@ export const inventoryApi = createApi({
       transformResponse: (
         response: ApiResponse<{ list: ExpectedAsset[]; total: number }>,
       ) => unwrapApiResponse(response),
+      keepUnusedDataFor: 120,
     }),
     getDrafts: builder.query<{ list: InventoryDraft[]; total: number }, number>({
       query: (id) => `/inventory/tasks/${id}/drafts`,
@@ -73,6 +74,7 @@ export const inventoryApi = createApi({
         response: ApiResponse<{ list: InventoryDraft[]; total: number }>,
       ) => unwrapApiResponse(response),
       providesTags: (_r, _e, id) => [{ type: 'InventoryDrafts', id }],
+      keepUnusedDataFor: 120,
     }),
     submitRecords: builder.mutation<SubmitResult, { taskId: number; items: SubmitItem[] }>({
       query: ({ taskId, items }) => ({

@@ -94,6 +94,17 @@ export function buildSubmitItems(rows: SpreadsheetRow[]): SubmitItem[] {
   });
 }
 
+export function mergeDraftTimestamps(
+  rows: SpreadsheetRow[],
+  drafts: InventoryDraft[],
+): SpreadsheetRow[] {
+  const draftMap = new Map(drafts.map((d) => [d.assetNo, d.updatedAt]));
+  return rows.map((row) => {
+    const updatedAt = draftMap.get(row.assetNo);
+    return updatedAt ? { ...row, expectedUpdatedAt: updatedAt } : row;
+  });
+}
+
 export function applySubmitResult(
   rows: SpreadsheetRow[],
   result: {

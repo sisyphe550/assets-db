@@ -14,6 +14,7 @@ const mockUser: UserInfo = {
 
 describe('authSlice', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     localStorage.clear();
   });
 
@@ -29,7 +30,7 @@ describe('authSlice', () => {
     );
     expect(state.isAuthenticated).toBe(true);
     expect(state.accessToken).toBe('access');
-    expect(localStorage.getItem('fams_access_token')).toBe('access');
+    expect(sessionStorage.getItem('fams_access_token')).toBe('access');
   });
 
   it('sets user profile', () => {
@@ -51,6 +52,6 @@ describe('authSlice', () => {
     state = authReducer(state, logout());
     expect(state.isAuthenticated).toBe(false);
     expect(state.user).toBeNull();
-    expect(localStorage.getItem('fams_access_token')).toBeNull();
+    expect(sessionStorage.getItem('fams_access_token')).toBeNull();
   });
 });

@@ -33,6 +33,7 @@ import {
   applySubmitResult,
   buildRowsFromExpected,
   buildSubmitItems,
+  mergeDraftTimestamps,
   type SpreadsheetRow,
 } from '@/utils/inventory';
 
@@ -53,6 +54,7 @@ export default function InventoryTaskDetailView({
   const user = useAppSelector(selectCurrentUser);
   const [pollComparing, setPollComparing] = useState(false);
   const compareTriggered = useRef(false);
+  const hydratedTaskId = useRef<number | null>(null);
 
   const { data: task, isLoading, isError, error, refetch } = useGetTaskQuery(taskIdNum, {
     skip: !taskIdNum,
@@ -60,10 +62,15 @@ export default function InventoryTaskDetailView({
   });
   const { data: expectedData, isLoading: expectedLoading } = useGetExpectedAssetsQuery(
     taskIdNum,
-    { skip: !taskIdNum || task?.status !== 1 },
+    { skip: !taskIdNum || task?.status !== 1, refetchOnFocus: false },
   );
-  const { data: draftsData, isLoading: draftsLoading } = useGetDraftsQuery(taskIdNum, {
+  const {
+    data: draftsData,
+    isLoading: draftsLoading,
+    refetch: refetchDrafts,
+  } = useGetDraftsQuery(taskIdNum, {
     skip: !taskIdNum || task?.status !== 1,
+    refetchOnFocus: false,
   });
   const { data: recordsData } = useGetRecordsQuery(
     { taskId: taskIdNum, page: 1, pageSize: 50 },
@@ -102,9 +109,20 @@ export default function InventoryTaskDetailView({
   }, [basePath, user, task]);
 
   useEffect(() => {
-    if (!expectedData?.list) return;
+    if (!taskIdNum || task?.status !== 1) return;
+    if (!expectedData?.list || expectedLoading || draftsLoading) return;
+    if (hydratedTaskId.current === taskIdNum) return;
+
     setRows(buildRowsFromExpected(expectedData.list, draftsData?.list ?? []));
-  }, [expectedData?.list, draftsData?.list]);
+    hydratedTaskId.current = taskIdNum;
+  }, [
+    taskIdNum,
+    task?.status,
+    expectedData?.list,
+    draftsData?.list,
+    expectedLoading,
+    draftsLoading,
+  ]);
 
   const conflictMessages = useMemo(
     () => rows.filter((r) => r.rowState === 'conflict').map((r) => r.rowMessage).filter(Boolean),
@@ -132,6 +150,10 @@ export default function InventoryTaskDetailView({
     try {
       const result = await submitRecords({ taskId: taskIdNum, items }).unwrap();
       setRows((prev) => applySubmitResult(prev, result));
+      const { data: freshDrafts } = await refetchDrafts();
+      if (freshDrafts?.list) {
+        setRows((prev) => mergeDraftTimestamps(prev, freshDrafts.list));
+      }
       const conflicts = result.conflicts ?? [];
       const failures = result.failures ?? [];
       const success = result.success ?? [];

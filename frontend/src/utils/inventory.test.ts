@@ -3,6 +3,7 @@ import {
   applySubmitResult,
   buildRowsFromExpected,
   buildSubmitItems,
+  mergeDraftTimestamps,
   type SpreadsheetRow,
 } from '@/utils/inventory';
 
@@ -157,5 +158,24 @@ describe('inventory utils', () => {
     expect(surplus?.name).toBe('未知设备');
     expect(surplus?.actualLocation).toBe('仓库');
     expect(surplus?.bookLocation).toBe('账面无');
+  });
+
+  it('merges draft timestamps without overwriting row content', () => {
+    const rows: SpreadsheetRow[] = [
+      {
+        ...baseRow,
+        actualLocation: '本地未保存编辑',
+        expectedUpdatedAt: null,
+      },
+    ];
+    const merged = mergeDraftTimestamps(rows, [
+      {
+        assetNo: 'EQUIP-2026-0001',
+        modifiedCells: { actual_location: '服务端值' },
+        updatedAt: '2026-07-09T04:00:00.000Z',
+      },
+    ]);
+    expect(merged[0].actualLocation).toBe('本地未保存编辑');
+    expect(merged[0].expectedUpdatedAt).toBe('2026-07-09T04:00:00.000Z');
   });
 });

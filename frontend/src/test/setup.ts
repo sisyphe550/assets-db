@@ -33,6 +33,11 @@ Object.defineProperty(globalThis, 'localStorage', {
   writable: true,
 });
 
+Object.defineProperty(globalThis, 'sessionStorage', {
+  value: new LocalStorageMock(),
+  writable: true,
+});
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({
