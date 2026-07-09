@@ -70,6 +70,12 @@ func main() {
 			h.Submit(w, r)
 		} else if strings.HasSuffix(r.URL.Path, "/archive") {
 			h.Archive(w, r)
+		} else if strings.HasSuffix(r.URL.Path, "/compare") {
+			if r.Method == http.MethodPost {
+				h.Compare(w, r)
+			} else {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
 		} else if strings.HasSuffix(r.URL.Path, "/records") {
 			h.Records(w, r)
 		} else if strings.Contains(r.URL.Path, "/expected-assets") {

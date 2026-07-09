@@ -99,6 +99,28 @@ export const inventoryApi = createApi({
         { type: 'InventoryList', id: 'LIST' },
       ],
     }),
+    compareTask: builder.mutation<
+      { taskId: number; status: number; compared?: boolean; alreadyDone?: boolean },
+      number
+    >({
+      query: (id) => ({
+        url: `/inventory/tasks/${id}/compare`,
+        method: 'POST',
+      }),
+      transformResponse: (
+        response: ApiResponse<{
+          taskId: number;
+          status: number;
+          compared?: boolean;
+          alreadyDone?: boolean;
+        }>,
+      ) => unwrapApiResponse(response),
+      invalidatesTags: (_r, _e, id) => [
+        { type: 'Inventory', id },
+        { type: 'InventoryList', id: 'LIST' },
+        { type: 'InventoryRecords', id },
+      ],
+    }),
     getRecords: builder.query<
       PaginatedData<InventoryRecord>,
       { taskId: number; page?: number; pageSize?: number; diffStatus?: number }
@@ -121,5 +143,6 @@ export const {
   useGetExpectedAssetsQuery,
   useSubmitRecordsMutation,
   useArchiveTaskMutation,
+  useCompareTaskMutation,
   useGetRecordsQuery,
 } = inventoryApi;

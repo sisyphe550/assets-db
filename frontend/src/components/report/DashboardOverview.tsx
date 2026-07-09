@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { ProTable, type ProColumns } from '@ant-design/pro-components';
 import type { WorkflowRequest } from '@/types/api';
 import StatCard from '@/components/report/StatCard';
+import ChartBox from '@/components/report/ChartBox';
 import { useGetAssetsByCategoryQuery, useGetAssetsByDeptQuery } from '@/store/api/reportApi';
 import { useGetRequestsQuery } from '@/store/api/workflowApi';
 import { useGetDeptTreeQuery } from '@/store/api/userApi';
@@ -186,16 +187,20 @@ export default function DashboardOverview({
             {pieData.length === 0 ? (
               <Empty description="暂无数据" />
             ) : (
-              <Suspense fallback={chartFallback}>
-                <Pie
-                  data={pieData}
-                  angleField="value"
-                  colorField="type"
-                  height={280}
-                  color={CHART_COLORS}
-                  legend={{ position: 'bottom' }}
-                />
-              </Suspense>
+              <ChartBox height={280}>
+                <Suspense fallback={chartFallback}>
+                  <Pie
+                    data={pieData}
+                    angleField="value"
+                    colorField="type"
+                    height={280}
+                    autoFit
+                    color={CHART_COLORS}
+                    legend={{ position: 'bottom' }}
+                    label={false}
+                  />
+                </Suspense>
+              </ChartBox>
             )}
           </Card>
         </Col>

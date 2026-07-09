@@ -22,6 +22,7 @@ import (
 
 	"github.com/sisyphus550/assets-db/backend/pkg/dept"
 	"github.com/sisyphus550/assets-db/backend/pkg/errx"
+	"github.com/sisyphus550/assets-db/backend/pkg/inventorycmp"
 	"github.com/sisyphus550/assets-db/backend/pkg/middleware"
 	"github.com/sisyphus550/assets-db/backend/pkg/redislock"
 	"github.com/sisyphus550/assets-db/backend/service/inventory/model"
@@ -522,11 +523,42 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// sendComparisonTask 发送比对任务到 Kafka
+// sendComparisonTask 归档后异步执行账实比对
 func (h *InvHandler) sendComparisonTask(taskID int64) {
-	// 通过调用 /inventory.rpc 或直接写 Kafka（简化：写 outbox 表或日志）
-	// v1 简化：直接打印日志，由 ComparisonWorker 轮询 status=2 的任务
-	log.Printf("comparison task queued: task_id=%d", taskID)
+	go func() {
+		if err := inventorycmp.Run(context.Background(), h.DB, h.AssetRPC, taskID); err != nil {
+			log.Printf("comparison failed: task_id=%d err=%v", taskID, err)
+		}
+	}()
+}
+
+// POST /inventory/tasks/:id/compare — 手动触发比对（用于 status=2 卡住的任务）
+func (h *InvHandler) Compare(w http.ResponseWriter, r *http.Request) {
+	taskID := parseIDForAction(r.URL.Path, "/tasks/", "/compare")
+	if taskID == 0 {
+		writeErr(w, errx.ErrInvalidParam)
+		return
+	}
+	im := model.NewInvModel(h.DB)
+	task, err := im.FindTask(r.Context(), taskID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if task.Status != 2 {
+		writeOK(w, map[string]any{"taskId": taskID, "status": task.Status, "alreadyDone": true})
+		return
+	}
+	if err := inventorycmp.Run(r.Context(), h.DB, h.AssetRPC, taskID); err != nil {
+		writeErr(w, errx.ErrInternal)
+		return
+	}
+	updated, _ := im.FindTask(r.Context(), taskID)
+	status := int16(3)
+	if updated != nil {
+		status = updated.Status
+	}
+	writeOK(w, map[string]any{"taskId": taskID, "status": status, "compared": true})
 }
 
 func getCellStr(cells map[string]any, key string) string {

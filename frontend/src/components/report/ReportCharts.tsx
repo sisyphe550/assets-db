@@ -10,6 +10,7 @@ import {
 } from '@/store/api/reportApi';
 import { useGetDeptTreeQuery } from '@/store/api/userApi';
 import DiffSummary from '@/components/report/DiffSummary';
+import ChartBox from '@/components/report/ChartBox';
 import StatusTag from '@/components/common/StatusTag';
 import {
   CHART_COLORS,
@@ -143,29 +144,32 @@ export default function ReportCharts({
       children: deptError ? (
         <Result status="error" title="部门统计加载失败" />
       ) : (
-        <Row gutter={16}>
+        <Row gutter={[16, 16]}>
           <Col xs={24} lg={10}>
             <Card title="各学院资产数量" loading={deptLoading}>
               {deptChartData.length === 0 ? (
                 <Empty description="暂无数据" />
               ) : (
-                <Suspense fallback={chartFallback}>
-                  <Column
-                    data={deptChartData}
-                    xField="dept"
-                    yField="count"
-                    height={300}
-                    color="#1677FF"
-                    animation={{ appear: { animation: 'fade-in', duration: 500 } }}
-                    legend={false}
-                    label={{ style: { fontSize: 12 } }}
-                  />
-                </Suspense>
+                <ChartBox height={300}>
+                  <Suspense fallback={chartFallback}>
+                    <Column
+                      data={deptChartData}
+                      xField="dept"
+                      yField="count"
+                      height={300}
+                      autoFit
+                      color="#1677FF"
+                      animation={{ appear: { animation: 'fade-in', duration: 500 } }}
+                      legend={false}
+                      axis={{ x: { labelAutoRotate: true } }}
+                    />
+                  </Suspense>
+                </ChartBox>
               )}
             </Card>
           </Col>
           <Col xs={24} lg={14}>
-            <Card title="部门资产明细">
+            <Card title="部门资产明细" styles={{ body: { paddingTop: 0 } }}>
               <ProTable<DeptStatItem>
                 rowKey="departmentId"
                 search={false}
@@ -185,29 +189,32 @@ export default function ReportCharts({
       key: 'category',
       label: '按类别',
       children: (
-        <Row gutter={16}>
+        <Row gutter={[16, 16]}>
           <Col xs={24} lg={10}>
             <Card title="资产类型分布" loading={categoryLoading}>
               {categoryChartData.length === 0 ? (
                 <Empty description="暂无数据" />
               ) : (
-                <Suspense fallback={chartFallback}>
-                  <Pie
-                    data={categoryChartData}
-                    angleField="value"
-                    colorField="type"
-                    height={300}
-                    color={CHART_COLORS}
-                    animation={{ appear: { animation: 'fade-in', duration: 500 } }}
-                    legend={{ position: 'bottom' }}
-                    label={{ style: { fontSize: 12 } }}
-                  />
-                </Suspense>
+                <ChartBox height={300}>
+                  <Suspense fallback={chartFallback}>
+                    <Pie
+                      data={categoryChartData}
+                      angleField="value"
+                      colorField="type"
+                      height={300}
+                      autoFit
+                      color={CHART_COLORS}
+                      animation={{ appear: { animation: 'fade-in', duration: 500 } }}
+                      legend={{ position: 'bottom' }}
+                      label={false}
+                    />
+                  </Suspense>
+                </ChartBox>
               )}
             </Card>
           </Col>
           <Col xs={24} lg={14}>
-            <Card title="类别明细">
+            <Card title="类别明细" styles={{ body: { paddingTop: 0 } }}>
               <ProTable<CategoryStatItem>
                 rowKey="category"
                 search={false}

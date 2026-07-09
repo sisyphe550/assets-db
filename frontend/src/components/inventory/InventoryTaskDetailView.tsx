@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -18,6 +18,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import StatusTag from '@/components/common/StatusTag';
 import {
   useArchiveTaskMutation,
+  useCompareTaskMutation,
   useGetExpectedAssetsQuery,
   useGetRecordsQuery,
   useGetTaskQuery,
@@ -49,6 +50,7 @@ export default function InventoryTaskDetailView({
   const navigate = useNavigate();
   const user = useAppSelector(selectCurrentUser);
   const [pollComparing, setPollComparing] = useState(false);
+  const compareTriggered = useRef(false);
 
   const { data: task, isLoading, isError, error, refetch } = useGetTaskQuery(taskIdNum, {
     skip: !taskIdNum,
@@ -66,15 +68,26 @@ export default function InventoryTaskDetailView({
   const [rows, setRows] = useState<SpreadsheetRow[]>([]);
   const [submitRecords, { isLoading: submitting }] = useSubmitRecordsMutation();
   const [archiveTask, { isLoading: archiving }] = useArchiveTaskMutation();
+  const [compareTask] = useCompareTaskMutation();
 
   useEffect(() => {
     if (task?.status === 2) {
       setPollComparing(true);
+      if (!compareTriggered.current) {
+        compareTriggered.current = true;
+        compareTask(taskIdNum)
+          .unwrap()
+          .then(() => refetch())
+          .catch(() => {
+            compareTriggered.current = false;
+          });
+      }
     }
     if (task?.status === 3) {
       setPollComparing(false);
+      compareTriggered.current = false;
     }
-  }, [task?.status]);
+  }, [task?.status, taskIdNum, compareTask, refetch]);
 
   const readOnly = !task || task.status !== 1;
 
