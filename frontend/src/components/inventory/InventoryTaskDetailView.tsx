@@ -188,11 +188,14 @@ export default function InventoryTaskDetailView({
       const conflicts = result.conflicts ?? [];
       const failures = result.failures ?? [];
       const success = result.success ?? [];
+      const total = items.length;
       if (conflicts.length) {
         message.error(`有 ${conflicts.length} 条冲突，请检查标红行`);
       } else if (failures.length) {
         const detail = failures.map((f) => f.message).join('；');
         message.warning(`有 ${failures.length} 条提交失败：${detail}`);
+      } else if (success.length < total) {
+        message.warning(`成功提交 ${success.length}/${total} 条，请检查未保存的行`);
       } else {
         message.success(`成功提交 ${success.length} 条`);
       }

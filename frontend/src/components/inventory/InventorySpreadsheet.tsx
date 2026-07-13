@@ -1,10 +1,11 @@
+import type { Dispatch, SetStateAction } from 'react';
 import { Input, Table } from 'antd';
 import type { SpreadsheetRow } from '@/utils/inventory';
 
 interface InventorySpreadsheetProps {
   rows: SpreadsheetRow[];
   readOnly: boolean;
-  onChange: (rows: SpreadsheetRow[]) => void;
+  onChange: Dispatch<SetStateAction<SpreadsheetRow[]>>;
 }
 
 function rowClassName(record: SpreadsheetRow) {
@@ -20,7 +21,9 @@ export default function InventorySpreadsheet({
   onChange,
 }: InventorySpreadsheetProps) {
   const updateRow = (key: string, patch: Partial<SpreadsheetRow>) => {
-    onChange(rows.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+    onChange((prev) =>
+      prev.map((row) => (row.key === key ? { ...row, ...patch } : row)),
+    );
   };
 
   const surplusInput = (

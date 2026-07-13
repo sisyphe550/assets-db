@@ -32,7 +32,33 @@ describe('inventory utils', () => {
 
   it('skips rows where actual location matches book location', () => {
     const unchanged = { ...baseRow, actualLocation: '101', notes: '' };
-    expect(buildSubmitItems([unchanged])).toHaveLength(0);
+    expect(buildSubmitItems([unchanged])).toHaveLength(1);
+    expect(buildSubmitItems([unchanged])[0].modifiedCells.actual_location).toBe('101');
+  });
+
+  it('builds submit items for multiple edited rows', () => {
+    const rows: SpreadsheetRow[] = [
+      { ...baseRow, actualLocation: '102' },
+      {
+        ...baseRow,
+        key: 'EQUIP-2026-0002',
+        assetNo: 'EQUIP-2026-0002',
+        actualLocation: '201',
+      },
+      {
+        ...baseRow,
+        key: 'EQUIP-2026-0003',
+        assetNo: 'EQUIP-2026-0003',
+        actualLocation: '301',
+      },
+    ];
+    const items = buildSubmitItems(rows);
+    expect(items).toHaveLength(3);
+    expect(items.map((i) => i.assetNo)).toEqual([
+      'EQUIP-2026-0001',
+      'EQUIP-2026-0002',
+      'EQUIP-2026-0003',
+    ]);
   });
 
   it('includes surplus rows with name or location', () => {

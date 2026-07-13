@@ -98,9 +98,7 @@ export function surplusHasEdits(row: SpreadsheetRow): boolean {
 function rowHasEdits(row: SpreadsheetRow): boolean {
   if (row.isSurplus) return surplusHasEdits(row);
   if (row.notes.trim() || row.foundName.trim()) return true;
-  const actual = row.actualLocation.trim();
-  if (!actual) return false;
-  return actual !== row.bookLocation.trim();
+  return Boolean(row.actualLocation.trim());
 }
 
 export function buildSubmitItems(rows: SpreadsheetRow[]): SubmitItem[] {
