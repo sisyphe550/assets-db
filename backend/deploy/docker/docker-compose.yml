@@ -30,6 +30,7 @@ services:
       - ../sql/postgres/002_seed.sql:/docker-entrypoint-initdb.d/002_seed.sql:ro
       - ../sql/postgres/003_report_init.sql:/docker-entrypoint-initdb.d/003_report_init.sql:ro
       - ../sql/postgres/004_inventory_conflict.sql:/docker-entrypoint-initdb.d/004_inventory_conflict.sql:ro
+      - ../sql/postgres/005_inventory_task_items.sql:/docker-entrypoint-initdb.d/005_inventory_task_items.sql:ro
       - ../../data/postgres/data:/var/lib/postgresql/data
     command:
       - "postgres"

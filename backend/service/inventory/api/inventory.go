@@ -70,6 +70,21 @@ func main() {
 			h.Submit(w, r)
 		} else if strings.HasSuffix(r.URL.Path, "/archive") {
 			h.Archive(w, r)
+		} else if strings.HasSuffix(r.URL.Path, "/items") {
+			switch r.Method {
+			case http.MethodGet:
+				h.ListTaskItems(w, r)
+			case http.MethodPut:
+				h.UpdateTaskItems(w, r)
+			default:
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
+		} else if strings.HasSuffix(r.URL.Path, "/publish") {
+			if r.Method == http.MethodPost {
+				h.PublishTask(w, r)
+			} else {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
 		} else if strings.HasSuffix(r.URL.Path, "/compare") {
 			if r.Method == http.MethodPost {
 				h.Compare(w, r)
@@ -110,6 +125,8 @@ func main() {
 }
 
 func getEnv(k, def string) string {
-	if v := os.Getenv(k); v != "" { return v }
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
 	return def
 }

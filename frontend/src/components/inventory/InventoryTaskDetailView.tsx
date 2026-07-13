@@ -17,6 +17,7 @@ import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import StatusTag from '@/components/common/StatusTag';
 import InventoryConflictPanel from '@/components/inventory/InventoryConflictPanel';
+import InventoryTaskItemConfigurator from '@/components/inventory/InventoryTaskItemConfigurator';
 import {
   useArchiveTaskMutation,
   useCompareTaskMutation,
@@ -352,6 +353,10 @@ export default function InventoryTaskDetailView({
         </Typography.Paragraph>
       </Card>
 
+      {task.status === 0 && showArchive && (
+        <InventoryTaskItemConfigurator taskId={taskIdNum} onPublished={refetch} />
+      )}
+
       {task.status === 2 && (
         <>
           {showArchive && (
@@ -445,9 +450,11 @@ export default function InventoryTaskDetailView({
           extra={
             !readOnly && (
               <Space>
-                <Button icon={<PlusOutlined />} onClick={addSurplusRow}>
-                  添加盘盈行
-                </Button>
+                {showArchive && (
+                  <Button icon={<PlusOutlined />} onClick={addSurplusRow}>
+                    添加盘盈行
+                  </Button>
+                )}
                 <Button type="primary" loading={submitting} onClick={handleSubmit}>
                   保存草稿
                 </Button>
@@ -458,7 +465,7 @@ export default function InventoryTaskDetailView({
           {expectedLoading || draftsLoading || !rowsReady ? (
             <Skeleton active paragraph={{ rows: 10 }} />
           ) : !hasSpreadsheetRows ? (
-            <Empty description="暂无应盘资产，可添加盘盈行后提交" />
+            <Empty description={showArchive ? '暂无应盘资产，可添加盘盈行后提交' : '暂无应盘资产'} />
           ) : (
             <Suspense fallback={<Skeleton active paragraph={{ rows: 10 }} />}>
               <InventorySpreadsheet

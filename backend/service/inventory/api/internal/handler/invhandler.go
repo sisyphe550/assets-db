@@ -90,14 +90,13 @@ func (h *InvHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	expectedCount := h.countExpectedAssets(r, t.ScopeDeptID)
 	writeOK(w, map[string]any{
 		"taskId":             t.ID,
 		"taskName":           t.TaskName,
 		"scopeDeptId":        t.ScopeDeptID,
-		"status":             1,
+		"status":             model.InventoryTaskDraft,
 		"assigneeIds":        req.AssigneeIDs,
-		"expectedAssetCount": expectedCount,
+		"expectedAssetCount": 0,
 	})
 }
 
@@ -148,7 +147,7 @@ func (h *InvHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, len(list))
 	for i, t := range list {
 		assignees, _ := im.GetAssigneeIDs(r.Context(), t.ID)
-		expected := h.countExpectedAssets(r, t.ScopeDeptID)
+		expected := len(h.expectedAssetsForTask(r.Context(), im, t))
 		submitted := h.countSubmittedDrafts(r.Context(), t.ID, uid, roleLevel == 3)
 		pending := h.pendingConflictCount(r.Context(), t.ID, t.Status)
 		items[i] = taskToMap(t, assignees, expected, submitted, pending)
@@ -181,6 +180,10 @@ func (h *InvHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, errx.ErrNotAssigned)
 			return
 		}
+		if task.Status == model.InventoryTaskDraft {
+			writeErr(w, errx.ErrForbidden)
+			return
+		}
 	} else if roleLevel == 2 {
 		allowed := false
 		for _, id := range h.deptSubtreeIDs(r.Context(), deptID) {
@@ -196,7 +199,7 @@ func (h *InvHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	assignees, _ := im.GetAssigneeIDs(r.Context(), taskID)
-	expected := h.countExpectedAssets(r, task.ScopeDeptID)
+	expected := len(h.expectedAssetsForTask(r.Context(), im, *task))
 	submitted := h.countSubmittedDrafts(r.Context(), task.ID, uid, roleLevel == 3)
 	pending := h.pendingConflictCount(r.Context(), taskID, task.Status)
 	writeOK(w, taskToMap(*task, assignees, expected, submitted, pending))
@@ -247,24 +250,6 @@ func (h *InvHandler) scopeDeptIDs(ctx context.Context, rootDeptID int64) []int64
 	return ids
 }
 
-func (h *InvHandler) countExpectedAssets(r *http.Request, scopeDeptID int64) int {
-	if h.AssetRPC == "" {
-		return 0
-	}
-	body, _ := json.Marshal(map[string]any{"deptIds": h.scopeDeptIDs(r.Context(), scopeDeptID)})
-	resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
-	if err != nil {
-		return 0
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	var result struct {
-		Assets []map[string]any `json:"assets"`
-	}
-	json.Unmarshal(respBody, &result)
-	return len(result.Assets)
-}
-
 func (h *InvHandler) countSubmittedDrafts(ctx context.Context, taskID int64, operatorID int64, perOperator bool) int {
 	if h.DraftCol == nil {
 		return 0
@@ -310,7 +295,7 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if task.Status != 1 {
+	if task.Status != model.InventoryTaskRunning {
 		writeErr(w, errx.ErrInvalidState)
 		return
 	}
@@ -326,9 +311,9 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Items []struct {
-			AssetNo          string         `json:"assetNo"`
-			ModifiedCells    map[string]any `json:"modifiedCells"`
-			ExpectedUpdatedAt *string       `json:"expectedUpdatedAt"`
+			AssetNo           string         `json:"assetNo"`
+			ModifiedCells     map[string]any `json:"modifiedCells"`
+			ExpectedUpdatedAt *string        `json:"expectedUpdatedAt"`
 		} `json:"items"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -340,10 +325,19 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-  // 逐条处理（初始化为空切片，避免 JSON 序列化为 null）
-  success := make([]string, 0)
-  conflicts := make([]map[string]any, 0)
-  failures := make([]map[string]any, 0)
+	selectedAssetNos := map[string]struct{}{}
+	if hasItems, _ := im.HasTaskItems(r.Context(), taskID); hasItems {
+		for _, a := range h.expectedAssetsForTask(r.Context(), im, *task) {
+			if assetNo := rpcAssetNo(a); assetNo != "" {
+				selectedAssetNos[assetNo] = struct{}{}
+			}
+		}
+	}
+
+	// 逐条处理（初始化为空切片，避免 JSON 序列化为 null）
+	success := make([]string, 0)
+	conflicts := make([]map[string]any, 0)
+	failures := make([]map[string]any, 0)
 
 	for _, item := range req.Items {
 		// 1. Redis 分布式锁
@@ -364,7 +358,9 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 		if h.AssetRPC != "" {
 			inScope, scopeErr := h.checkAssetInScope(r.Context(), item.AssetNo, task.ScopeDeptID)
 			if scopeErr != nil || !inScope {
-				if h.RDB != nil { redislock.Unlock(r.Context(), h.RDB, lockKey, lockOwner) }
+				if h.RDB != nil {
+					redislock.Unlock(r.Context(), h.RDB, lockKey, lockOwner)
+				}
 				if scopeErr != nil {
 					failures = append(failures, map[string]any{
 						"assetNo": item.AssetNo, "code": 50301,
@@ -376,6 +372,18 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 						"message": "资产不在盘点范围内",
 					})
 				}
+				continue
+			}
+		}
+		if roleLevel > 2 && len(selectedAssetNos) > 0 {
+			if _, ok := selectedAssetNos[item.AssetNo]; !ok {
+				if h.RDB != nil {
+					redislock.Unlock(r.Context(), h.RDB, lockKey, lockOwner)
+				}
+				conflicts = append(conflicts, map[string]any{
+					"assetNo": item.AssetNo, "code": 40302,
+					"message": "资产不在盘点任务条目内",
+				})
 				continue
 			}
 		}
@@ -415,7 +423,9 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 			result, mongoErr = h.DraftCol.UpdateOne(ctx, filter, update, opts)
 		}
 
-		if h.RDB != nil { redislock.Unlock(r.Context(), h.RDB, lockKey, lockOwner) }
+		if h.RDB != nil {
+			redislock.Unlock(r.Context(), h.RDB, lockKey, lockOwner)
+		}
 
 		if mongoErr != nil {
 			failures = append(failures, map[string]any{
@@ -456,8 +466,8 @@ func (h *InvHandler) Submit(w http.ResponseWriter, r *http.Request) {
 func (h *InvHandler) checkAssetInScope(ctx context.Context, assetNo string, scopeDeptID int64) (bool, error) {
 	scopeIDs := h.scopeDeptIDs(ctx, scopeDeptID)
 	body, _ := json.Marshal(map[string]any{
-		"assetNo":        assetNo,
-		"scopeDeptIds":   scopeIDs,
+		"assetNo":      assetNo,
+		"scopeDeptIds": scopeIDs,
 	})
 	resp, err := http.Post(h.AssetRPC+"/asset.rpc/CheckAssetScope", "application/json", bytes.NewReader(body))
 	if err != nil {
@@ -475,7 +485,9 @@ func (h *InvHandler) checkAssetInScope(ctx context.Context, assetNo string, scop
 // POST /inventory/tasks/:id/archive
 func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 	taskID := parseIDForAction(r.URL.Path, "/tasks/", "/archive")
-	var req struct{ Force bool `json:"force"` }
+	var req struct {
+		Force bool `json:"force"`
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 
 	im := model.NewInvModel(h.DB)
@@ -484,7 +496,7 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if task.Status != 1 {
+	if task.Status != model.InventoryTaskRunning {
 		writeOK(w, map[string]any{"status": "already_archived"})
 		return
 	}
@@ -520,23 +532,11 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 	assigneeIDs, _ := im.GetAssigneeIDs(r.Context(), taskID)
 	var conflictInputs []model.ConflictInput
 
-	// Step 2: 从 asset-rpc 获取 scope 内所有账面资产
+	// Step 2: 从 asset-rpc 获取任务条目内所有账面资产
 	bookAssets := make(map[string]map[string]any)
-	if h.AssetRPC != "" {
-		body, _ := json.Marshal(map[string]any{"deptIds": h.scopeDeptIDs(r.Context(), task.ScopeDeptID)})
-		resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
-		if err == nil {
-			defer resp.Body.Close()
-			respBody, _ := io.ReadAll(resp.Body)
-			var result struct {
-				Assets []map[string]any `json:"assets"`
-			}
-			json.Unmarshal(respBody, &result)
-			for _, a := range result.Assets {
-				if assetNo := rpcAssetNo(a); assetNo != "" {
-					bookAssets[assetNo] = a
-				}
-			}
+	for _, a := range h.expectedAssetsForTask(r.Context(), im, *task) {
+		if assetNo := rpcAssetNo(a); assetNo != "" {
+			bookAssets[assetNo] = a
 		}
 	}
 
@@ -670,7 +670,6 @@ func getCellStr(cells map[string]any, key string) string {
 	return ""
 }
 
-
 // GET /inventory/tasks/:id/records
 func (h *InvHandler) Records(w http.ResponseWriter, r *http.Request) {
 	id := parseIDForAction(r.URL.Path, "/tasks/", "/records")
@@ -738,23 +737,7 @@ func (h *InvHandler) Records(w http.ResponseWriter, r *http.Request) {
 
 func (h *InvHandler) fetchScopeAssetMap(ctx context.Context, scopeDeptID int64) map[int64]map[string]any {
 	result := make(map[int64]map[string]any)
-	if h.AssetRPC == "" {
-		return result
-	}
-	body, _ := json.Marshal(map[string]any{"deptIds": h.scopeDeptIDs(ctx, scopeDeptID)})
-	resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
-	if err != nil {
-		return result
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	var rpcResult struct {
-		Assets []map[string]any `json:"assets"`
-	}
-	if json.Unmarshal(respBody, &rpcResult) != nil {
-		return result
-	}
-	for _, a := range rpcResult.Assets {
+	for _, a := range h.fetchScopeAssets(ctx, scopeDeptID) {
 		id := rpcAssetIDInt64(a)
 		if id > 0 {
 			result[id] = a
@@ -875,38 +858,14 @@ func (h *InvHandler) Drafts(w http.ResponseWriter, r *http.Request) {
 // GET /inventory/tasks/:id/expected-assets
 func (h *InvHandler) ExpectedAssets(w http.ResponseWriter, r *http.Request) {
 	id := parseIDForAction(r.URL.Path, "/tasks/", "/expected-assets")
-	task, err := model.NewInvModel(h.DB).FindTask(r.Context(), id)
+	im := model.NewInvModel(h.DB)
+	task, err := im.FindTask(r.Context(), id)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	// 通过 asset-rpc 获取 scope 内资产列表
-	if h.AssetRPC != "" {
-		body, _ := json.Marshal(map[string]any{"deptIds": h.scopeDeptIDs(r.Context(), task.ScopeDeptID)})
-		resp, err := http.Post(h.AssetRPC+"/asset.rpc/ListAssetsByDeptIds", "application/json", bytes.NewReader(body))
-		if err == nil {
-			defer resp.Body.Close()
-			respBody, _ := io.ReadAll(resp.Body)
-			var result struct {
-				Assets []map[string]any `json:"assets"`
-			}
-			json.Unmarshal(respBody, &result)
-			if len(result.Assets) > 0 {
-				var list []map[string]any
-				for _, a := range result.Assets {
-					list = append(list, map[string]any{
-						"assetId":      rpcAssetID(a),
-						"assetNo":      rpcAssetNo(a),
-						"name":         rpcAssetName(a),
-						"bookLocation": rpcAssetLocation(a),
-					})
-				}
-				writeOK(w, map[string]any{"list": list, "total": len(list)})
-				return
-			}
-		}
-	}
-	writeOK(w, map[string]any{"list": []any{}, "total": 0})
+	list := assetsToExpectedList(h.expectedAssetsForTask(r.Context(), im, *task))
+	writeOK(w, map[string]any{"list": list, "total": len(list)})
 }
 
 // ========== helpers ==========

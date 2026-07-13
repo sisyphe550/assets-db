@@ -55,7 +55,7 @@ export default function InventoryTaskTable({ basePath }: InventoryTaskTableProps
               type="link"
               onClick={() => navigate(`${basePath}/inventory/tasks/${r.id}`)}
             >
-              {r.status === 1 ? '进入盘点' : '查看'}
+              {r.status === 0 ? '配置' : r.status === 1 ? '进入盘点' : '查看'}
             </Button>
             {r.status === 1 && (
               <Button
@@ -121,6 +121,7 @@ export default function InventoryTaskTable({ basePath }: InventoryTaskTableProps
           placeholder="任务状态"
           style={{ width: 140 }}
           options={[
+            { label: '待发布', value: 0 },
             { label: '进行中', value: 1 },
             { label: '比对中', value: 2 },
             { label: '已完成', value: 3 },

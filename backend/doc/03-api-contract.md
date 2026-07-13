@@ -443,7 +443,7 @@ WHERE is_shared = 1
 }
 ```
 
-**Response data**：任务对象 + `expectedAssetCount`（scope 内账面资产数）
+**Response data**：任务草稿对象。新建后 `status=0`（待发布），`expectedAssetCount=0`；管理员需先配置盘点条目，再发布任务。
 
 **错误**：40302 scope 超出管理员子树；42203 时间窗非法（end ≤ start）
 
@@ -463,7 +463,7 @@ WHERE is_shared = 1
   "creatorId": 10002,
   "startTime": "2026-07-01T00:00:00+08:00",
   "endTime": "2026-07-31T23:59:59+08:00",
-  "status": 1,
+  "status": 0,
   "assigneeIds": [10003, 10004],
   "expectedAssetCount": 50,
   "submittedCount": 15
@@ -482,9 +482,77 @@ WHERE is_shared = 1
 
 ---
 
-### 4.3 GET `/inventory/tasks/:id/expected-assets`
+### 4.3 GET `/inventory/tasks/:id/items`
 
-**说明**：返回该任务 scope 内应盘资产清单（供前端表格预填）
+**权限**：role≤2 管理员；院级管理员仅可访问本院子树范围任务
+
+**说明**：返回任务已选择盘点条目，以及该任务 scope 内可选资产清单。用于待发布任务的条目配置。
+
+**Response data**：
+
+```json
+{
+  "list": [
+    {
+      "assetId": 501,
+      "assetNo": "EQUIP-2026-0001",
+      "name": "激光切割机",
+      "bookLocation": "一号实验楼101"
+    }
+  ],
+  "available": [
+    {
+      "assetId": 501,
+      "assetNo": "EQUIP-2026-0001",
+      "name": "激光切割机",
+      "bookLocation": "一号实验楼101"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+### 4.3.1 PUT `/inventory/tasks/:id/items`
+
+**权限**：role≤2 管理员；仅 `status=0` 可修改
+
+**Request**：
+
+```json
+{
+  "assetIds": [501, 502]
+}
+```
+
+**Response data**：更新后的 `list` 与 `total`
+
+**错误**：42201 任务状态非法；40001 资产不在任务 scope 内或请求参数无效
+
+---
+
+### 4.3.2 POST `/inventory/tasks/:id/publish`
+
+**权限**：role≤2 管理员；仅 `status=0` 可发布
+
+**说明**：任务必须至少配置 1 条盘点资产，且至少指派 1 名盘点员。发布后 `status=1`，普通用户开始盘点。
+
+**Response data**：
+
+```json
+{
+  "taskId": 1,
+  "status": 1,
+  "expectedAssetCount": 2
+}
+```
+
+---
+
+### 4.3.3 GET `/inventory/tasks/:id/expected-assets`
+
+**说明**：返回该任务应盘资产清单（供前端表格预填）。新任务按 `inventory_task_item` 返回已配置条目；历史任务若没有条目配置，继续兼容为 scope 内账面资产清单。
 
 **Response data**：
 
