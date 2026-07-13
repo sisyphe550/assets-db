@@ -47,54 +47,69 @@ export default function InventoryConflictPanel({
                 ? 'custom'
                 : undefined;
           return (
-          <Radio.Group
-            value={radioValue}
-            onChange={(e) => {
-              const val = e.target.value as string;
-              if (val === 'custom') {
-                setSelection((prev) => ({ ...prev, [row.assetNo]: { type: 'custom' } }));
-                return;
-              }
-              if (val.startsWith('assignee:')) {
-                const operatorId = Number(val.slice('assignee:'.length));
-                setSelection((prev) => ({
-                  ...prev,
-                  [row.assetNo]: { type: 'assignee', operatorId },
-                }));
-              }
-            }}
-          >
-            <Space direction="vertical">
-              {row.candidates.map((c) => (
-                <Radio key={c.operatorId} value={`assignee:${c.operatorId}`}>
-                  {c.operatorName ?? `#${c.operatorId}`}：{c.actualLocation || '（空）'}
-                  {c.notes ? `（${c.notes}）` : ''}
-                </Radio>
-              ))}
-              <Radio value="custom">管理员自定义</Radio>
-            </Space>
-          </Radio.Group>
+            <Radio.Group
+              value={radioValue}
+              onChange={(e) => {
+                const val = e.target.value as string;
+                if (val === 'custom') {
+                  setSelection((prev) => ({ ...prev, [row.assetNo]: { type: 'custom' } }));
+                  return;
+                }
+                if (val.startsWith('assignee:')) {
+                  const operatorId = Number(val.slice('assignee:'.length));
+                  setSelection((prev) => ({
+                    ...prev,
+                    [row.assetNo]: { type: 'assignee', operatorId },
+                  }));
+                }
+              }}
+            >
+              <Space direction="vertical">
+                {row.candidates.map((c) => (
+                  <Radio key={c.operatorId} value={`assignee:${c.operatorId}`}>
+                    {c.operatorName ?? `#${c.operatorId}`}：{c.actualLocation || '（空）'}
+                    {c.notes ? `（${c.notes}）` : ''}
+                  </Radio>
+                ))}
+                <Radio value="custom">管理员自定义</Radio>
+              </Space>
+            </Radio.Group>
           );
         },
       },
       {
-        title: '自定义实际位置',
+        title: '管理员新记录',
         width: 200,
         render: (_: unknown, row: InventoryConflict) =>
           selection[row.assetNo]?.type === 'custom' ? (
-            <Input
-              placeholder="实际位置"
-              value={customValues[row.assetNo]?.actualLocation ?? ''}
-              onChange={(e) =>
-                setCustomValues((prev) => ({
-                  ...prev,
-                  [row.assetNo]: {
-                    actualLocation: e.target.value,
-                    notes: prev[row.assetNo]?.notes ?? '',
-                  },
-                }))
-              }
-            />
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Input
+                placeholder="实际位置"
+                value={customValues[row.assetNo]?.actualLocation ?? ''}
+                onChange={(e) =>
+                  setCustomValues((prev) => ({
+                    ...prev,
+                    [row.assetNo]: {
+                      actualLocation: e.target.value,
+                      notes: prev[row.assetNo]?.notes ?? '',
+                    },
+                  }))
+                }
+              />
+              <Input
+                placeholder="备注（可选）"
+                value={customValues[row.assetNo]?.notes ?? ''}
+                onChange={(e) =>
+                  setCustomValues((prev) => ({
+                    ...prev,
+                    [row.assetNo]: {
+                      actualLocation: prev[row.assetNo]?.actualLocation ?? '',
+                      notes: e.target.value,
+                    },
+                  }))
+                }
+              />
+            </Space>
           ) : (
             '-'
           ),

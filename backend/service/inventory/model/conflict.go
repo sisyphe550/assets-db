@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	ConflictPending  int16 = 0
-	ConflictResolved int16 = 1
+	ConflictPending     int16 = 0
+	ConflictResolved    int16 = 1
 	ResolveFromAssignee int16 = 1
 	ResolveCustom       int16 = 2
 )
@@ -113,11 +113,12 @@ func (m *InvModel) ListConflicts(ctx context.Context, taskID int64, pendingOnly 
 		var raw []byte
 		var resolvedSource sql.NullInt16
 		var resolvedOp, resolvedBy sql.NullInt64
+		var resolvedLocation, resolvedNotes sql.NullString
 		var resolvedAt sql.NullTime
 		if err := rows.Scan(
 			&c.ID, &c.TaskID, &c.AssetNo, &c.AssetID, &c.Status, &raw,
-			&resolvedSource, &resolvedOp, &c.ResolvedActualLocation,
-			&c.ResolvedNotes, &resolvedBy, &resolvedAt,
+			&resolvedSource, &resolvedOp, &resolvedLocation,
+			&resolvedNotes, &resolvedBy, &resolvedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -129,6 +130,12 @@ func (m *InvModel) ListConflicts(ctx context.Context, taskID int64, pendingOnly 
 		if resolvedOp.Valid {
 			v := resolvedOp.Int64
 			c.ResolvedOperatorID = &v
+		}
+		if resolvedLocation.Valid {
+			c.ResolvedActualLocation = resolvedLocation.String
+		}
+		if resolvedNotes.Valid {
+			c.ResolvedNotes = resolvedNotes.String
 		}
 		if resolvedBy.Valid {
 			v := resolvedBy.Int64

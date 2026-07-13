@@ -20,6 +20,7 @@ import InventoryConflictPanel from '@/components/inventory/InventoryConflictPane
 import {
   useArchiveTaskMutation,
   useCompareTaskMutation,
+  useGetConflictsQuery,
   useGetExpectedAssetsQuery,
   useGetDraftsQuery,
   useGetRecordsQuery,
@@ -81,11 +82,30 @@ export default function InventoryTaskDetailView({
     { taskId: taskIdNum, page: recordsPage, pageSize: recordsPageSize },
     { skip: !taskIdNum || task?.status !== 3 },
   );
+  const shouldLoadAdminConflicts = Boolean(
+    taskIdNum && showArchive && task?.status === 2,
+  );
+  const {
+    data: conflictsData,
+    isLoading: conflictsLoading,
+    isError: conflictsError,
+    refetch: refetchConflicts,
+  } = useGetConflictsQuery(taskIdNum, {
+    skip: !shouldLoadAdminConflicts,
+  });
 
   const [rows, setRows] = useState<SpreadsheetRow[]>([]);
   const [submitRecords, { isLoading: submitting }] = useSubmitRecordsMutation();
   const [archiveTask, { isLoading: archiving }] = useArchiveTaskMutation();
   const [compareTask, { isLoading: comparing }] = useCompareTaskMutation();
+
+  // 冲突列表接口是比对阶段的权威来源。任务详情中的计数可能因缓存、
+  // 旧服务版本或短暂查询失败而滞后，不能用它作为是否请求冲突的门禁。
+  const pendingConflicts = showArchive
+    ? (conflictsData?.pendingCount ?? task?.pendingConflictCount ?? 0)
+    : (task?.pendingConflictCount ?? 0);
+  const adminConflictsReady =
+    !showArchive || (!conflictsLoading && !conflictsError && conflictsData !== undefined);
 
   const triggerCompare = useCallback(() => {
     if (!taskIdNum) return;
@@ -105,9 +125,9 @@ export default function InventoryTaskDetailView({
 
   useEffect(() => {
     if (task?.status !== 2 || compareTriggered.current) return;
-    if ((task.pendingConflictCount ?? 0) > 0) return;
+    if (!adminConflictsReady || pendingConflicts > 0) return;
     triggerCompare();
-  }, [task?.status, task?.pendingConflictCount, taskIdNum, triggerCompare]);
+  }, [task?.status, adminConflictsReady, pendingConflicts, taskIdNum, triggerCompare]);
 
   useEffect(() => {
     if (task?.status === 3) {
@@ -116,8 +136,6 @@ export default function InventoryTaskDetailView({
       setCompareError(null);
     }
   }, [task?.status]);
-
-  const pendingConflicts = task?.pendingConflictCount ?? 0;
 
   const readOnly = !task || task.status !== 1;
 
@@ -336,10 +354,29 @@ export default function InventoryTaskDetailView({
 
       {task.status === 2 && (
         <>
-          {showArchive && pendingConflicts > 0 && (
-            <InventoryConflictPanel taskId={taskIdNum} onResolved={() => refetch()} />
+          {showArchive && (
+            <InventoryConflictPanel
+              taskId={taskIdNum}
+              onResolved={() => {
+                refetchConflicts();
+                refetch();
+              }}
+            />
           )}
-          {pendingConflicts > 0 && showArchive ? null : compareError ? (
+          {showArchive && conflictsError ? (
+            <Card>
+              <Result
+                status="error"
+                title="裁决条目加载失败"
+                subTitle="无法确认是否存在待裁决冲突，系统不会自动进入下一阶段。"
+                extra={
+                  <Button type="primary" onClick={() => refetchConflicts()}>
+                    重新加载
+                  </Button>
+                }
+              />
+            </Card>
+          ) : showArchive && (!adminConflictsReady || pendingConflicts > 0) ? null : compareError ? (
             <Card>
               <Result
                 status="error"
