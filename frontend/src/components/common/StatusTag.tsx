@@ -3,10 +3,10 @@ import {
   ASSET_STATUS_MAP,
   INVENTORY_DIFF_MAP,
   INVENTORY_STATUS_MAP,
-  WORKFLOW_STAGE_MAP,
   WORKFLOW_STATUS_MAP,
   WORKFLOW_TYPE_MAP,
 } from '@/utils/constants';
+import { getWorkflowStageLabel } from '@/utils/workflow';
 
 type StatusTagType =
   | 'asset'
@@ -19,9 +19,11 @@ type StatusTagType =
 interface StatusTagProps {
   type: StatusTagType;
   value: number;
+  /** workflowStage 时传入工单 status，用于驳回/通过后展示终态 */
+  workflowStatus?: number;
 }
 
-export default function StatusTag({ type, value }: StatusTagProps) {
+export default function StatusTag({ type, value, workflowStatus }: StatusTagProps) {
   if (type === 'asset') {
     const meta = ASSET_STATUS_MAP[value] ?? { label: `未知(${value})`, color: 'default' };
     return <Tag color={meta.color}>{meta.label}</Tag>;
@@ -31,7 +33,11 @@ export default function StatusTag({ type, value }: StatusTagProps) {
     return <Tag color={meta.color}>{meta.label}</Tag>;
   }
   if (type === 'workflowStage') {
-    return <Tag>{WORKFLOW_STAGE_MAP[value] ?? `阶段${value}`}</Tag>;
+    const label =
+      workflowStatus !== undefined
+        ? getWorkflowStageLabel(workflowStatus, value)
+        : `阶段${value}`;
+    return <Tag>{label}</Tag>;
   }
   if (type === 'workflowType') {
     return <Tag color="blue">{WORKFLOW_TYPE_MAP[value] ?? `类型${value}`}</Tag>;

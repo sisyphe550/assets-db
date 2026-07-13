@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { canActOnWorkflow, filterAssetsForWorkflowType } from '@/utils/workflow';
+import {
+  canActOnWorkflow,
+  filterAssetsForWorkflowType,
+  getWorkflowStageLabel,
+} from '@/utils/workflow';
 import type { UserInfo, WorkflowRequest } from '@/types/api';
 
 const baseRequest: WorkflowRequest = {
@@ -63,6 +67,22 @@ describe('canActOnWorkflow', () => {
     expect(canActOnWorkflow(collegeAdmin, baseRequest, [15, 103, 104])).toBe(
       'approve_or_reject',
     );
+  });
+});
+
+describe('getWorkflowStageLabel', () => {
+  it('shows pending stage while in progress', () => {
+    expect(getWorkflowStageLabel(1, 1)).toBe('待院级初审');
+    expect(getWorkflowStageLabel(1, 2)).toBe('待校级复审');
+  });
+
+  it('shows archived when approved', () => {
+    expect(getWorkflowStageLabel(2, 3)).toBe('已归档');
+  });
+
+  it('shows completed when rejected regardless of currentStage', () => {
+    expect(getWorkflowStageLabel(3, 1)).toBe('已完结');
+    expect(getWorkflowStageLabel(3, 2)).toBe('已完结');
   });
 });
 

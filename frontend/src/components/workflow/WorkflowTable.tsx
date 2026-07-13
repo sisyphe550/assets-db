@@ -95,7 +95,9 @@ export default function WorkflowTable({
         title: '当前阶段',
         dataIndex: 'currentStage',
         width: 120,
-        render: (_, r) => <StatusTag type="workflowStage" value={r.currentStage} />,
+        render: (_, r) => (
+          <StatusTag type="workflowStage" value={r.currentStage} workflowStatus={r.status} />
+        ),
       },
       {
         title: '提交时间',

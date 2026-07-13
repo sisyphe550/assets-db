@@ -1,6 +1,14 @@
 import type { UserInfo, WorkflowRequest } from '@/types/api';
+import { WORKFLOW_STAGE_MAP } from '@/utils/constants';
 
 export type WorkflowAction = 'approve_or_reject';
+
+/** 结合 status 展示阶段：驳回/通过后不再显示「待初审」等进行中标签 */
+export function getWorkflowStageLabel(status: number, currentStage: number): string {
+  if (status === 2) return WORKFLOW_STAGE_MAP[3];
+  if (status === 3) return '已完结';
+  return WORKFLOW_STAGE_MAP[currentStage] ?? `阶段${currentStage}`;
+}
 
 export function canActOnWorkflow(
   user: UserInfo,

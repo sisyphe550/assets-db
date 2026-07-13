@@ -200,7 +200,7 @@ func writeWorkflowLog(ctx context.Context, pg *sql.DB, cw *csv.Writer) error {
 		}
 		cw.Write([]string{
 			fmt.Sprintf("%d", wfID), fmt.Sprintf("%d", assetID), requester,
-			workflowTypeLabel(wfType), stageLabel(stage), statusLabel(status),
+			workflowTypeLabel(wfType), stageLabel(stage, status), statusLabel(status),
 			reason, action, operator, comment, operateTime.Format(time.RFC3339),
 		})
 	}
@@ -255,8 +255,14 @@ func workflowTypeLabel(t int16) string {
 	return map[int16]string{1: "领用", 2: "归还", 3: "维修", 4: "报废"}[t]
 }
 
-func stageLabel(s int16) string {
-	return map[int16]string{1: "院级初审", 2: "校级终审", 3: "已归档"}[s]
+func stageLabel(stage, status int16) string {
+	if status == 2 {
+		return "已归档"
+	}
+	if status == 3 {
+		return "已完结"
+	}
+	return map[int16]string{1: "待院级初审", 2: "待校级复审", 3: "已归档"}[stage]
 }
 
 func statusLabel(s int16) string {

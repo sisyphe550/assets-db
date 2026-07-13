@@ -134,7 +134,11 @@ export default function WorkflowDetail({
               <StatusTag type="workflow" value={request.status} />
             </Descriptions.Item>
             <Descriptions.Item label="当前阶段">
-              <StatusTag type="workflowStage" value={request.currentStage} />
+              <StatusTag
+                type="workflowStage"
+                value={request.currentStage}
+                workflowStatus={request.status}
+              />
             </Descriptions.Item>
             <Descriptions.Item label="申请人">
               {request.requesterName ?? `#${request.requesterId}`}
