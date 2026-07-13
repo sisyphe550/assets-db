@@ -23,6 +23,7 @@ import (
 	"github.com/sisyphus550/assets-db/backend/pkg/dept"
 	"github.com/sisyphus550/assets-db/backend/pkg/errx"
 	"github.com/sisyphus550/assets-db/backend/pkg/inventorycmp"
+	"github.com/sisyphus550/assets-db/backend/pkg/inventorydraft"
 	"github.com/sisyphus550/assets-db/backend/pkg/middleware"
 	"github.com/sisyphus550/assets-db/backend/pkg/redislock"
 	"github.com/sisyphus550/assets-db/backend/service/inventory/model"
@@ -269,11 +270,22 @@ func (h *InvHandler) countSubmittedDrafts(ctx context.Context, taskID int64, ope
 	if perOperator {
 		filter["operator_id"] = operatorID
 	}
-	count, err := h.DraftCol.CountDocuments(ctx, filter)
+	cursor, err := h.DraftCol.Find(ctx, filter)
 	if err != nil {
 		return 0
 	}
-	return int(count)
+	defer cursor.Close(ctx)
+	seen := make(map[string]struct{})
+	for cursor.Next(ctx) {
+		var doc struct {
+			AssetNo string `bson:"asset_no"`
+		}
+		if cursor.Decode(&doc) != nil || doc.AssetNo == "" {
+			continue
+		}
+		seen[doc.AssetNo] = struct{}{}
+	}
+	return len(seen)
 }
 
 // POST /inventory/tasks/:id/submit — 批量提交盘点草稿
@@ -474,8 +486,8 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Step 1: 从 MongoDB 读取所有草稿
-	draftAssetNos := make(map[string]map[string]any)
+	// Step 1: 从 MongoDB 读取所有草稿，按资产合并（指派盘点员优先）
+	draftsByAsset := make(map[string][]inventorydraft.Entry)
 	if h.DraftCol != nil {
 		cursor, err := h.DraftCol.Find(r.Context(), bson.M{"task_id": taskID})
 		if err == nil {
@@ -485,15 +497,31 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 					AssetNo       string         `bson:"asset_no"`
 					OperatorID    int64          `bson:"operator_id"`
 					ModifiedCells map[string]any `bson:"modified_cells"`
+					UpdatedAt     time.Time      `bson:"updated_at"`
 				}
-				cursor.Decode(&draft)
-				draftAssetNos[draft.AssetNo] = map[string]any{
-					"operator_id": draft.OperatorID,
-					"location":    getCellStr(draft.ModifiedCells, "actual_location"),
-					"found_name":  getCellStr(draft.ModifiedCells, "found_name"),
-					"book_location": getCellStr(draft.ModifiedCells, "book_location"),
+				if cursor.Decode(&draft) != nil {
+					continue
 				}
+				draftsByAsset[draft.AssetNo] = append(draftsByAsset[draft.AssetNo], inventorydraft.Entry{
+					AssetNo:      draft.AssetNo,
+					OperatorID:   draft.OperatorID,
+					Location:     getCellStr(draft.ModifiedCells, "actual_location"),
+					FoundName:    getCellStr(draft.ModifiedCells, "found_name"),
+					BookLocation: getCellStr(draft.ModifiedCells, "book_location"),
+					UpdatedAt:    draft.UpdatedAt,
+				})
 			}
+		}
+	}
+	assigneeIDs, _ := im.GetAssigneeIDs(r.Context(), taskID)
+	draftAssetNos := make(map[string]map[string]any)
+	for assetNo, entries := range draftsByAsset {
+		picked := inventorydraft.PickForArchive(entries, assigneeIDs)
+		draftAssetNos[assetNo] = map[string]any{
+			"operator_id":   picked.OperatorID,
+			"location":      picked.Location,
+			"found_name":    picked.FoundName,
+			"book_location": picked.BookLocation,
 		}
 	}
 

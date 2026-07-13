@@ -45,8 +45,8 @@ export const INVENTORY_STATUS_MAP: Record<number, { label: string; color: string
 };
 
 export const INVENTORY_DIFF_MAP: Record<number, { label: string; color: string }> = {
-  0: { label: '相符', color: 'success' },
-  1: { label: '位置变更', color: 'processing' },
+  0: { label: '待比对', color: 'default' },
+  1: { label: '相符', color: 'success' },
   2: { label: '盘盈', color: 'warning' },
   3: { label: '盘亏', color: 'error' },
 };

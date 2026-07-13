@@ -22,4 +22,11 @@ describe('StatusTag', () => {
     render(<StatusTag type="asset" value={99} />);
     expect(screen.getByText('未知(99)')).toBeInTheDocument();
   });
+
+  it('renders inventory diff labels aligned with backend', () => {
+    render(<StatusTag type="inventoryDiff" value={1} />);
+    expect(screen.getByText('相符')).toBeInTheDocument();
+    render(<StatusTag type="inventoryDiff" value={3} />);
+    expect(screen.getByText('盘亏')).toBeInTheDocument();
+  });
 });
