@@ -7,6 +7,7 @@ import type {
   InventoryDraft,
   InventoryRecord,
   InventoryTask,
+  InventoryTaskItems,
   ResolveConflictReq,
   SubmitItem,
   SubmitResult,
@@ -22,7 +23,14 @@ export interface InventoryListParams extends ListParams {
 export const inventoryApi = createApi({
   reducerPath: 'inventoryApi',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['InventoryList', 'Inventory', 'InventoryRecords', 'InventoryDrafts', 'InventoryConflicts'],
+  tagTypes: [
+    'InventoryList',
+    'Inventory',
+    'InventoryRecords',
+    'InventoryDrafts',
+    'InventoryConflicts',
+    'InventoryItems',
+  ],
   endpoints: (builder) => ({
     getTasks: builder.query<PaginatedData<InventoryTask>, InventoryListParams | void>({
       query: (params) => ({
@@ -55,7 +63,7 @@ export const inventoryApi = createApi({
           creatorId: 0,
           startTime: arg.startTime,
           endTime: arg.endTime,
-          status: 1 as const,
+          status: Number(data.status ?? 0) as InventoryTask['status'],
           assigneeIds: (data.assigneeIds as number[]) ?? arg.assigneeIds,
           expectedAssetCount: Number(data.expectedAssetCount ?? 0),
           submittedCount: 0,
@@ -69,6 +77,51 @@ export const inventoryApi = createApi({
         response: ApiResponse<{ list: ExpectedAsset[]; total: number }>,
       ) => unwrapApiResponse(response),
       keepUnusedDataFor: 120,
+    }),
+    getTaskItems: builder.query<InventoryTaskItems, number>({
+      query: (id) => `/inventory/tasks/${id}/items`,
+      transformResponse: (response: ApiResponse<InventoryTaskItems>) =>
+        unwrapApiResponse(response),
+      providesTags: (_r, _e, id) => [{ type: 'InventoryItems', id }],
+    }),
+    updateTaskItems: builder.mutation<
+      { list: ExpectedAsset[]; total: number },
+      { taskId: number; assetIds: number[] }
+    >({
+      query: ({ taskId, assetIds }) => ({
+        url: `/inventory/tasks/${taskId}/items`,
+        method: 'PUT',
+        body: { assetIds },
+      }),
+      transformResponse: (
+        response: ApiResponse<{ list: ExpectedAsset[]; total: number }>,
+      ) => unwrapApiResponse(response),
+      invalidatesTags: (_r, _e, { taskId }) => [
+        { type: 'InventoryItems', id: taskId },
+        { type: 'Inventory', id: taskId },
+        { type: 'InventoryList', id: 'LIST' },
+      ],
+    }),
+    publishTask: builder.mutation<
+      { taskId: number; status: InventoryTask['status']; expectedAssetCount: number },
+      number
+    >({
+      query: (id) => ({
+        url: `/inventory/tasks/${id}/publish`,
+        method: 'POST',
+      }),
+      transformResponse: (
+        response: ApiResponse<{
+          taskId: number;
+          status: InventoryTask['status'];
+          expectedAssetCount: number;
+        }>,
+      ) => unwrapApiResponse(response),
+      invalidatesTags: (_r, _e, id) => [
+        { type: 'Inventory', id },
+        { type: 'InventoryItems', id },
+        { type: 'InventoryList', id: 'LIST' },
+      ],
     }),
     getDrafts: builder.query<{ list: InventoryDraft[]; total: number }, number>({
       query: (id) => `/inventory/tasks/${id}/drafts`,
@@ -202,6 +255,9 @@ export const {
   useGetTaskQuery,
   useCreateTaskMutation,
   useGetExpectedAssetsQuery,
+  useGetTaskItemsQuery,
+  useUpdateTaskItemsMutation,
+  usePublishTaskMutation,
   useGetDraftsQuery,
   useSubmitRecordsMutation,
   useArchiveTaskMutation,

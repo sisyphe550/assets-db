@@ -145,7 +145,7 @@ export interface InventoryTask {
   creatorId: number;
   startTime: string;
   endTime: string;
-  status: 1 | 2 | 3;
+  status: 0 | 1 | 2 | 3;
   assigneeIds: number[];
   expectedAssetCount?: number;
   submittedCount?: number;
@@ -190,6 +190,12 @@ export interface ExpectedAsset {
   name: string;
   bookLocation: string;
   expectedUpdatedAt?: string | null;
+}
+
+export interface InventoryTaskItems {
+  list: ExpectedAsset[];
+  available: ExpectedAsset[];
+  total: number;
 }
 
 export interface InventoryDraft {

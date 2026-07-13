@@ -480,6 +480,9 @@ interface TokenPair {
 | getTask | query GET | `/inventory/tasks/:id` | Inventory:{id} |
 | createTask | mutation POST | `/inventory/tasks` | invalidates InventoryList |
 | getExpectedAssets | query GET | `/inventory/tasks/:id/expected-assets` | — |
+| getTaskItems | query GET | `/inventory/tasks/:id/items` | InventoryItems:{id} |
+| updateTaskItems | mutation PUT | `/inventory/tasks/:id/items` | invalidates InventoryItems, Inventory |
+| publishTask | mutation POST | `/inventory/tasks/:id/publish` | invalidates InventoryList, Inventory |
 | submitRecords | mutation POST | `/inventory/tasks/:id/submit` | — |
 | archiveTask | mutation POST | `/inventory/tasks/:id/archive` | invalidates InventoryList, Inventory:{id} |
 | getRecords | query GET | `/inventory/tasks/:id/records` | InventoryRecords:{id} |
@@ -607,7 +610,7 @@ export interface InventoryTask {
   creatorId: number;
   startTime: string;
   endTime: string;
-  status: 1 | 2 | 3;
+  status: 0 | 1 | 2 | 3;
   expectedAssetCount?: number;
   submittedCount?: number;
 }

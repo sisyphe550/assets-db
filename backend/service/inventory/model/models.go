@@ -20,6 +20,18 @@ type InventoryTask struct {
 	Status      int16     `db:"status"`
 }
 
+const (
+	InventoryTaskDraft     int16 = 0
+	InventoryTaskRunning   int16 = 1
+	InventoryTaskComparing int16 = 2
+	InventoryTaskCompleted int16 = 3
+)
+
+type InventoryTaskItem struct {
+	TaskID  int64 `db:"task_id"`
+	AssetID int64 `db:"asset_id"`
+}
+
 type InventoryRecord struct {
 	ID             int64  `db:"id"`
 	TaskID         int64  `db:"task_id"`
@@ -37,20 +49,124 @@ func NewInvModel(db *sql.DB) *InvModel { return &InvModel{db: db} }
 
 func (m *InvModel) CreateTask(ctx context.Context, t *InventoryTask, assigneeIDs []int64) error {
 	tx, err := m.db.BeginTx(ctx, nil)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	defer tx.Rollback()
 
 	err = tx.QueryRowContext(ctx,
 		`INSERT INTO inventory_task (task_name, scope_dept_id, creator_id, start_time, end_time, status)
-		 VALUES ($1,$2,$3,$4,$5,1) RETURNING id`,
+		 VALUES ($1,$2,$3,$4,$5,0) RETURNING id`,
 		t.TaskName, t.ScopeDeptID, t.CreatorID, t.StartTime, t.EndTime).Scan(&t.ID)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 
 	for _, uid := range assigneeIDs {
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO inventory_task_assignee (task_id, user_id, assigned_by) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
 			t.ID, uid, t.CreatorID)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (m *InvModel) ReplaceTaskItems(ctx context.Context, taskID int64, assetIDs []int64) error {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM inventory_task_item WHERE task_id=$1`, taskID); err != nil {
+		return err
+	}
+	seen := make(map[int64]struct{}, len(assetIDs))
+	for _, assetID := range assetIDs {
+		if assetID <= 0 {
+			continue
+		}
+		if _, ok := seen[assetID]; ok {
+			continue
+		}
+		seen[assetID] = struct{}{}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO inventory_task_item (task_id, asset_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+			taskID, assetID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (m *InvModel) GetTaskItemAssetIDs(ctx context.Context, taskID int64) ([]int64, error) {
+	rows, err := m.db.QueryContext(ctx,
+		`SELECT asset_id FROM inventory_task_item WHERE task_id=$1 ORDER BY asset_id`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func (m *InvModel) HasTaskItems(ctx context.Context, taskID int64) (bool, error) {
+	var count int
+	err := m.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM inventory_task_item WHERE task_id=$1`, taskID).Scan(&count)
+	return count > 0, err
+}
+
+func (m *InvModel) PublishTask(ctx context.Context, taskID int64) error {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var status int16
+	if err := tx.QueryRowContext(ctx,
+		`SELECT status FROM inventory_task WHERE id=$1 FOR UPDATE`, taskID).Scan(&status); err != nil {
+		if err == sql.ErrNoRows {
+			return errx.ErrTaskNotFound
+		}
+		return err
+	}
+	if status != InventoryTaskDraft {
+		return errx.ErrInvalidState
+	}
+
+	var itemCount int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM inventory_task_item WHERE task_id=$1`, taskID).Scan(&itemCount); err != nil {
+		return err
+	}
+	if itemCount == 0 {
+		return errx.ErrInvalidParam
+	}
+
+	var assigneeCount int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM inventory_task_assignee WHERE task_id=$1`, taskID).Scan(&assigneeCount); err != nil {
+		return err
+	}
+	if assigneeCount == 0 {
+		return errx.ErrInvalidParam
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE inventory_task SET status=1 WHERE id=$1`, taskID); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

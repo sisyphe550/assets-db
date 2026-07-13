@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS workflow_request (
     department_id   BIGINT          NOT NULL,
     type            SMALLINT        NOT NULL CHECK (type IN (1, 2, 3, 4)),
     current_stage   SMALLINT        NOT NULL DEFAULT 1 CHECK (current_stage IN (1, 2, 3)),
-    status          SMALLINT        NOT NULL DEFAULT 1 CHECK (status IN (1, 2, 3)),
+    status          SMALLINT        NOT NULL DEFAULT 0 CHECK (status IN (0, 1, 2, 3)),
     reason          VARCHAR(255),
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ     NOT NULL DEFAULT now()
@@ -125,7 +125,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_task_user
     ON inventory_task_assignee (task_id, user_id);
 
 -- ==============================
--- 8. 盘点明细比对结果表
+-- 8. 盘点任务条目表
+-- ==============================
+CREATE TABLE IF NOT EXISTS inventory_task_item (
+    task_id     BIGINT          NOT NULL,
+    asset_id    BIGINT          NOT NULL,
+    created_at  TIMESTAMPTZ     NOT NULL DEFAULT now(),
+    PRIMARY KEY (task_id, asset_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_item_task
+    ON inventory_task_item (task_id);
+
+-- ==============================
+-- 9. 盘点明细比对结果表
 -- ==============================
 CREATE TABLE IF NOT EXISTS inventory_record (
     id               BIGINT          NOT NULL PRIMARY KEY,

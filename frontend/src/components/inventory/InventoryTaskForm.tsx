@@ -74,7 +74,7 @@ export default function InventoryTaskForm({ basePath }: InventoryTaskFormProps) 
         endTime: values.timeRange[1].toISOString(),
         assigneeIds: values.assigneeIds,
       }).unwrap();
-      message.success('盘点任务已创建');
+      message.success('任务草稿已创建，请配置盘点条目后发布');
       navigate(`${basePath}/inventory/tasks/${result.id}`);
     } catch (err: unknown) {
       const e = err as { message?: string };
