@@ -64,6 +64,7 @@ var (
 	ErrInvalidTimeRange = New(42203, http.StatusUnprocessableEntity, "时间窗设置无效")
 	ErrExportNotReady   = New(42204, http.StatusUnprocessableEntity, "导出任务未完成")
 	ErrOpenWorkflow     = New(42205, http.StatusUnprocessableEntity, "存在进行中的审批，无法修改资产")
+	ErrPendingConflicts = New(42206, http.StatusUnprocessableEntity, "存在待裁决的盘点员冲突")
 
 	// 500xx 服务器内部错误
 	ErrInternal = New(50001, http.StatusInternalServerError, "服务器内部错误")

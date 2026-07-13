@@ -76,6 +76,18 @@ func main() {
 			} else {
 				w.WriteHeader(http.StatusMethodNotAllowed)
 			}
+		} else if strings.Contains(r.URL.Path, "/conflicts") {
+			if strings.HasSuffix(r.URL.Path, "/resolve") {
+				if r.Method == http.MethodPost {
+					h.ResolveConflict(w, r)
+				} else {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+				}
+			} else if r.Method == http.MethodGet {
+				h.ListConflicts(w, r)
+			} else {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+			}
 		} else if strings.HasSuffix(r.URL.Path, "/records") {
 			h.Records(w, r)
 		} else if strings.HasSuffix(r.URL.Path, "/drafts") {

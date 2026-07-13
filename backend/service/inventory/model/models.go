@@ -159,27 +159,6 @@ func (m *InvModel) CountSubmitted(ctx context.Context, taskID int64) (int, error
 	return count, err
 }
 
-func (m *InvModel) ArchiveTask(ctx context.Context, taskID int64, records []InventoryRecord) error {
-	tx, err := m.db.BeginTx(ctx, nil)
-	if err != nil { return err }
-	defer tx.Rollback()
-
-	for _, r := range records {
-		_, err := tx.ExecContext(ctx,
-			`INSERT INTO inventory_record (task_id, asset_id, found_asset_desc, operator_id, is_scanned, actual_location, diff_status)
-			 VALUES ($1,$2,$3,$4,$5,$6,0)
-			 ON CONFLICT (task_id, asset_id) WHERE asset_id IS NOT NULL DO NOTHING`,
-			taskID, r.AssetID, r.FoundAssetDesc, r.OperatorID, r.IsScanned, r.ActualLocation)
-		if err != nil { return err }
-	}
-
-	_, err = tx.ExecContext(ctx,
-		`UPDATE inventory_task SET status=2 WHERE id=$1`, taskID)
-	if err != nil { return err }
-
-	return tx.Commit()
-}
-
 func (m *InvModel) GetRecords(ctx context.Context, taskID int64) ([]InventoryRecord, error) {
 	return m.ListRecords(ctx, taskID, nil)
 }

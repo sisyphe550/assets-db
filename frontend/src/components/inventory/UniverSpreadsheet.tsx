@@ -140,7 +140,11 @@ export default function UniverSpreadsheet({ rows, readOnly, onChange }: UniverSp
           subTitle={initError}
           extra={<span>已回退到基础表格模式</span>}
         />
-        <InventorySpreadsheet rows={rows} readOnly={readOnly} onChange={onChange} />
+        <InventorySpreadsheet
+          rows={rows}
+          readOnly={readOnly}
+          onChange={(value) => onChange(typeof value === 'function' ? value(rows) : value)}
+        />
       </>
     );
   }

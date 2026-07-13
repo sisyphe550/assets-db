@@ -9,6 +9,7 @@ type Entry struct {
 	Location     string
 	FoundName    string
 	BookLocation string
+	Notes        string
 	UpdatedAt    time.Time
 }
 

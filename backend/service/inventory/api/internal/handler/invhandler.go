@@ -150,7 +150,8 @@ func (h *InvHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		assignees, _ := im.GetAssigneeIDs(r.Context(), t.ID)
 		expected := h.countExpectedAssets(r, t.ScopeDeptID)
 		submitted := h.countSubmittedDrafts(r.Context(), t.ID, uid, roleLevel == 3)
-		items[i] = taskToMap(t, assignees, expected, submitted)
+		pending := h.pendingConflictCount(r.Context(), t.ID, t.Status)
+		items[i] = taskToMap(t, assignees, expected, submitted, pending)
 	}
 	writeOK(w, map[string]any{"list": items, "page": page, "pageSize": pageSize, "total": total})
 }
@@ -197,21 +198,23 @@ func (h *InvHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 	assignees, _ := im.GetAssigneeIDs(r.Context(), taskID)
 	expected := h.countExpectedAssets(r, task.ScopeDeptID)
 	submitted := h.countSubmittedDrafts(r.Context(), task.ID, uid, roleLevel == 3)
-	writeOK(w, taskToMap(*task, assignees, expected, submitted))
+	pending := h.pendingConflictCount(r.Context(), taskID, task.Status)
+	writeOK(w, taskToMap(*task, assignees, expected, submitted, pending))
 }
 
-func taskToMap(t model.InventoryTask, assignees []int64, expected, submitted int) map[string]any {
+func taskToMap(t model.InventoryTask, assignees []int64, expected, submitted, pendingConflicts int) map[string]any {
 	return map[string]any{
-		"id":                 t.ID,
-		"taskName":           t.TaskName,
-		"scopeDeptId":        t.ScopeDeptID,
-		"creatorId":          t.CreatorID,
-		"startTime":          t.StartTime.Format(time.RFC3339),
-		"endTime":            t.EndTime.Format(time.RFC3339),
-		"status":             t.Status,
-		"assigneeIds":        assignees,
-		"expectedAssetCount": expected,
-		"submittedCount":     submitted,
+		"id":                   t.ID,
+		"taskName":             t.TaskName,
+		"scopeDeptId":          t.ScopeDeptID,
+		"creatorId":            t.CreatorID,
+		"startTime":            t.StartTime.Format(time.RFC3339),
+		"endTime":              t.EndTime.Format(time.RFC3339),
+		"status":               t.Status,
+		"assigneeIds":          assignees,
+		"expectedAssetCount":   expected,
+		"submittedCount":       submitted,
+		"pendingConflictCount": pendingConflicts,
 	}
 }
 
@@ -508,22 +511,14 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 					Location:     getCellStr(draft.ModifiedCells, "actual_location"),
 					FoundName:    getCellStr(draft.ModifiedCells, "found_name"),
 					BookLocation: getCellStr(draft.ModifiedCells, "book_location"),
+					Notes:        getCellStr(draft.ModifiedCells, "temp_notes"),
 					UpdatedAt:    draft.UpdatedAt,
 				})
 			}
 		}
 	}
 	assigneeIDs, _ := im.GetAssigneeIDs(r.Context(), taskID)
-	draftAssetNos := make(map[string]map[string]any)
-	for assetNo, entries := range draftsByAsset {
-		picked := inventorydraft.PickForArchive(entries, assigneeIDs)
-		draftAssetNos[assetNo] = map[string]any{
-			"operator_id":   picked.OperatorID,
-			"location":      picked.Location,
-			"found_name":    picked.FoundName,
-			"book_location": picked.BookLocation,
-		}
-	}
+	var conflictInputs []model.ConflictInput
 
 	// Step 2: 从 asset-rpc 获取 scope 内所有账面资产
 	bookAssets := make(map[string]map[string]any)
@@ -545,19 +540,32 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Step 3: 生成 inventory_record
+	// Step 3: 生成 inventory_record；盘点员冲突则暂写入冲突表待裁决
 	var records []model.InventoryRecord
 	recordCount := 0
 
-	// 已扫描记录（来自 draft）
-	for assetNo, draft := range draftAssetNos {
-		opID, _ := draft["operator_id"].(int64)
-		loc, _ := draft["location"].(string)
-		foundName, _ := draft["found_name"].(string)
-		bookLoc, _ := draft["book_location"].(string)
+	for assetNo, entries := range draftsByAsset {
+		if inventorydraft.HasAssigneeConflict(entries, assigneeIDs) {
+			var assetID *int64
+			if bookAsset, ok := bookAssets[assetNo]; ok {
+				id := rpcAssetIDInt64(bookAsset)
+				assetID = &id
+			}
+			conflictInputs = append(conflictInputs, model.ConflictInput{
+				AssetNo:    assetNo,
+				AssetID:    assetID,
+				Candidates: h.candidatesFromEntries(entries, assigneeIDs),
+			})
+			continue
+		}
+
+		picked := inventorydraft.PickConsensus(entries, assigneeIDs)
+		opID := picked.OperatorID
+		loc := picked.Location
+		foundName := picked.FoundName
+		bookLoc := picked.BookLocation
 
 		if bookAsset, ok := bookAssets[assetNo]; ok {
-			// 账面存在：正常记录
 			aid := rpcAssetIDInt64(bookAsset)
 			records = append(records, model.InventoryRecord{
 				TaskID: taskID, AssetID: &aid,
@@ -565,12 +573,11 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 				ActualLocation: loc,
 			})
 		} else {
-			// 账面无此编号：盘盈候选
 			desc := formatSurplusDesc(foundName, bookLoc, loc)
 			records = append(records, model.InventoryRecord{
 				TaskID: taskID, AssetID: nil,
 				FoundAssetDesc: desc,
-				OperatorID: &opID, IsScanned: 1,
+				OperatorID:     &opID, IsScanned: 1,
 				ActualLocation: loc,
 			})
 		}
@@ -579,7 +586,7 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 
 	// 盘亏候选（账面有但 draft 无）
 	for assetNo, bookAsset := range bookAssets {
-		if _, ok := draftAssetNos[assetNo]; !ok {
+		if _, ok := draftsByAsset[assetNo]; !ok {
 			aid := rpcAssetIDInt64(bookAsset)
 			records = append(records, model.InventoryRecord{
 				TaskID: taskID, AssetID: &aid,
@@ -590,17 +597,24 @@ func (h *InvHandler) Archive(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 4: 事务写入 + 更新任务状态
-	if err := im.ArchiveTask(r.Context(), taskID, records); err != nil {
+	if err := im.ArchiveTaskWithConflicts(r.Context(), taskID, records, conflictInputs); err != nil {
 		writeErr(w, err)
 		return
 	}
 
-	// Step 5: 发送 Kafka 消息触发比对 Worker
-	go h.sendComparisonTask(taskID)
+	conflictCount := len(conflictInputs)
+	comparisonQueued := conflictCount == 0
+	if comparisonQueued {
+		go h.sendComparisonTask(taskID)
+	}
 
 	writeOK(w, map[string]any{
-		"taskId": taskID, "archivedRecordCount": recordCount,
-		"scannedCount": len(draftAssetNos), "comparisonJobQueued": true,
+		"taskId":               taskID,
+		"archivedRecordCount":  recordCount,
+		"scannedCount":         len(draftsByAsset) - conflictCount,
+		"conflictCount":        conflictCount,
+		"pendingConflictCount": conflictCount,
+		"comparisonJobQueued":  comparisonQueued,
 	})
 }
 
@@ -628,6 +642,11 @@ func (h *InvHandler) Compare(w http.ResponseWriter, r *http.Request) {
 	}
 	if task.Status != 2 {
 		writeOK(w, map[string]any{"taskId": taskID, "status": task.Status, "alreadyDone": true})
+		return
+	}
+	pending, _ := im.CountPendingConflicts(r.Context(), taskID)
+	if pending > 0 {
+		writeErr(w, errx.ErrPendingConflicts)
 		return
 	}
 	if err := inventorycmp.Run(r.Context(), h.DB, h.AssetRPC, taskID); err != nil {

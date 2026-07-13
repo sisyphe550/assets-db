@@ -3,9 +3,11 @@ import { baseQueryWithReauth } from './baseQuery';
 import type {
   CreateInventoryTaskReq,
   ExpectedAsset,
+  InventoryConflict,
   InventoryDraft,
   InventoryRecord,
   InventoryTask,
+  ResolveConflictReq,
   SubmitItem,
   SubmitResult,
 } from '@/types/api';
@@ -20,7 +22,7 @@ export interface InventoryListParams extends ListParams {
 export const inventoryApi = createApi({
   reducerPath: 'inventoryApi',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['InventoryList', 'Inventory', 'InventoryRecords', 'InventoryDrafts'],
+  tagTypes: ['InventoryList', 'Inventory', 'InventoryRecords', 'InventoryDrafts', 'InventoryConflicts'],
   endpoints: (builder) => ({
     getTasks: builder.query<PaginatedData<InventoryTask>, InventoryListParams | void>({
       query: (params) => ({
@@ -90,7 +92,13 @@ export const inventoryApi = createApi({
       ],
     }),
     archiveTask: builder.mutation<
-      { taskId: number; archivedRecordCount: number; comparisonJobQueued: boolean },
+      {
+        taskId: number;
+        archivedRecordCount: number;
+        comparisonJobQueued: boolean;
+        conflictCount?: number;
+        pendingConflictCount?: number;
+      },
       { id: number; force?: boolean }
     >({
       query: ({ id, force = false }) => ({
@@ -103,11 +111,14 @@ export const inventoryApi = createApi({
           taskId: number;
           archivedRecordCount: number;
           comparisonJobQueued: boolean;
+          conflictCount?: number;
+          pendingConflictCount?: number;
         }>,
       ) => unwrapApiResponse(response),
       invalidatesTags: (_r, _e, { id }) => [
         { type: 'Inventory', id },
         { type: 'InventoryList', id: 'LIST' },
+        { type: 'InventoryConflicts', id },
       ],
     }),
     compareTask: builder.mutation<
@@ -144,6 +155,45 @@ export const inventoryApi = createApi({
         unwrapApiResponse(response),
       providesTags: (_r, _e, { taskId }) => [{ type: 'InventoryRecords', id: taskId }],
     }),
+    getConflicts: builder.query<
+      { list: InventoryConflict[]; total: number; pendingCount: number },
+      number
+    >({
+      query: (taskId) => `/inventory/tasks/${taskId}/conflicts`,
+      transformResponse: (
+        response: ApiResponse<{ list: InventoryConflict[]; total: number; pendingCount: number }>,
+      ) => unwrapApiResponse(response),
+      providesTags: (_r, _e, taskId) => [{ type: 'InventoryConflicts', id: taskId }],
+    }),
+    resolveConflict: builder.mutation<
+      {
+        assetNo: string;
+        pendingConflictCount: number;
+        comparisonJobQueued: boolean;
+        allResolved: boolean;
+      },
+      { taskId: number; assetNo: string; body: ResolveConflictReq }
+    >({
+      query: ({ taskId, assetNo, body }) => ({
+        url: `/inventory/tasks/${taskId}/conflicts/${encodeURIComponent(assetNo)}/resolve`,
+        method: 'POST',
+        body,
+      }),
+      transformResponse: (
+        response: ApiResponse<{
+          assetNo: string;
+          pendingConflictCount: number;
+          comparisonJobQueued: boolean;
+          allResolved: boolean;
+        }>,
+      ) => unwrapApiResponse(response),
+      invalidatesTags: (_r, _e, { taskId }) => [
+        { type: 'Inventory', id: taskId },
+        { type: 'InventoryConflicts', id: taskId },
+        { type: 'InventoryRecords', id: taskId },
+        { type: 'InventoryList', id: 'LIST' },
+      ],
+    }),
   }),
 });
 
@@ -157,4 +207,6 @@ export const {
   useArchiveTaskMutation,
   useCompareTaskMutation,
   useGetRecordsQuery,
+  useGetConflictsQuery,
+  useResolveConflictMutation,
 } = inventoryApi;

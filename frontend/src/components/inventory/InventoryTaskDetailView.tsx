@@ -16,6 +16,7 @@ import {
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import StatusTag from '@/components/common/StatusTag';
+import InventoryConflictPanel from '@/components/inventory/InventoryConflictPanel';
 import {
   useArchiveTaskMutation,
   useCompareTaskMutation,
@@ -103,15 +104,20 @@ export default function InventoryTaskDetailView({
   }, [taskIdNum, compareTask, refetch]);
 
   useEffect(() => {
-    if (task?.status === 2 && !compareTriggered.current) {
-      triggerCompare();
-    }
+    if (task?.status !== 2 || compareTriggered.current) return;
+    if ((task.pendingConflictCount ?? 0) > 0) return;
+    triggerCompare();
+  }, [task?.status, task?.pendingConflictCount, taskIdNum, triggerCompare]);
+
+  useEffect(() => {
     if (task?.status === 3) {
       setPollComparing(false);
       compareTriggered.current = false;
       setCompareError(null);
     }
-  }, [task?.status, taskIdNum, triggerCompare]);
+  }, [task?.status]);
+
+  const pendingConflicts = task?.pendingConflictCount ?? 0;
 
   const readOnly = !task || task.status !== 1;
 
@@ -213,11 +219,19 @@ export default function InventoryTaskDetailView({
       cancelText: '取消',
       onOk: async () => {
         try {
-          await archiveTask({ id: task!.id }).unwrap();
+          const result = await archiveTask({ id: task!.id }).unwrap();
           compareTriggered.current = false;
           setCompareError(null);
-          setPollComparing(true);
-          message.success('已归档，正在比对…');
+          if ((result.pendingConflictCount ?? 0) > 0) {
+            setPollComparing(false);
+            message.warning(
+              `已归档，有 ${result.pendingConflictCount} 条盘点员冲突待裁决`,
+            );
+          } else {
+            setPollComparing(true);
+            message.success('已归档，正在比对…');
+          }
+          refetch();
         } catch (err: unknown) {
           const e = err as { message?: string };
           message.error(e.message ?? '归档失败');
@@ -321,27 +335,40 @@ export default function InventoryTaskDetailView({
       </Card>
 
       {task.status === 2 && (
-        <Card>
-          {compareError ? (
-            <Result
-              status="error"
-              title="比对失败"
-              subTitle={compareError}
-              extra={
-                <Button type="primary" loading={comparing} onClick={triggerCompare}>
-                  重新比对
-                </Button>
-              }
-            />
-          ) : (
-            <div style={{ textAlign: 'center', padding: 48 }}>
-              <Spin size="large" />
-              <Typography.Paragraph style={{ marginTop: 16 }}>
-                比对中，请稍候…
-              </Typography.Paragraph>
-            </div>
+        <>
+          {showArchive && pendingConflicts > 0 && (
+            <InventoryConflictPanel taskId={taskIdNum} onResolved={() => refetch()} />
           )}
-        </Card>
+          {pendingConflicts > 0 && showArchive ? null : compareError ? (
+            <Card>
+              <Result
+                status="error"
+                title="比对失败"
+                subTitle={compareError}
+                extra={
+                  <Button type="primary" loading={comparing} onClick={triggerCompare}>
+                    重新比对
+                  </Button>
+                }
+              />
+            </Card>
+          ) : pendingConflicts > 0 && !showArchive ? (
+            <Card>
+              <Typography.Paragraph style={{ textAlign: 'center', padding: 48 }}>
+                存在盘点员冲突，等待管理员裁决…
+              </Typography.Paragraph>
+            </Card>
+          ) : (
+            <Card>
+              <div style={{ textAlign: 'center', padding: 48 }}>
+                <Spin size="large" />
+                <Typography.Paragraph style={{ marginTop: 16 }}>
+                  比对中，请稍候…
+                </Typography.Paragraph>
+              </div>
+            </Card>
+          )}
+        </>
       )}
 
       {task.status === 3 && (

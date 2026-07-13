@@ -149,6 +149,31 @@ export interface InventoryTask {
   assigneeIds: number[];
   expectedAssetCount?: number;
   submittedCount?: number;
+  pendingConflictCount?: number;
+}
+
+export interface InventoryConflictCandidate {
+  operatorId: number;
+  operatorName?: string;
+  actualLocation: string;
+  notes: string;
+  foundName: string;
+  updatedAt: string;
+}
+
+export interface InventoryConflict {
+  assetNo: string;
+  assetId?: number;
+  name?: string;
+  bookLocation?: string;
+  candidates: InventoryConflictCandidate[];
+}
+
+export interface ResolveConflictReq {
+  source: 'assignee' | 'custom';
+  operatorId?: number;
+  actualLocation?: string;
+  notes?: string;
 }
 
 export interface CreateInventoryTaskReq {
